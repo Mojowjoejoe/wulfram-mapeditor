@@ -136,11 +136,15 @@ if (persistenceDirectory) {
     const parsed = JSON.parse(value);
     return {
       name: parsed.name,
-      generatorVersion: parsed.baseLayouts?.[0]?.metadata?.['generator.version'],
+      mapGeneratorVersion: parsed.metadata?.['generator.version'],
+      layoutGeneratorVersion: parsed.baseLayouts?.[0]?.metadata?.['generator.version'],
       seed: parsed.baseLayouts?.[0]?.metadata?.['generator.seed'],
     };
   })()`);
-  if (localProject?.name !== 'Balanced UI Smoke' || !localProject.generatorVersion || !localProject.seed) {
+  if (localProject?.name !== 'Balanced UI Smoke'
+    || !localProject.mapGeneratorVersion
+    || localProject.mapGeneratorVersion !== localProject.layoutGeneratorVersion
+    || !localProject.seed) {
     throw new Error(`Local project persistence failed: ${JSON.stringify(localProject)}`);
   }
 
@@ -166,7 +170,9 @@ if (persistenceDirectory) {
   const projectEntry = archiveEntries.find((entry) => entry.name.endsWith('/wulfram-project.json'));
   const reopenedProject = projectEntry ? JSON.parse(projectEntry.text) : undefined;
   if (reopenedProject?.name !== 'Balanced UI Smoke'
-    || !reopenedProject.baseLayouts?.[0]?.metadata?.['generator.version']) {
+    || !reopenedProject.metadata?.['generator.version']
+    || reopenedProject.metadata['generator.version']
+      !== reopenedProject.baseLayouts?.[0]?.metadata?.['generator.version']) {
     throw new Error('Exported map ZIP did not reopen as the generated project.');
   }
 
@@ -184,6 +190,7 @@ if (persistenceDirectory) {
     input.dispatchEvent(new Event('input', { bubbles: true }));
   })()`);
   await waitFor("document.querySelector('.map-title input')?.value === 'Temporary replacement'");
+  await evaluate("localStorage.removeItem('wulfram-forge-project-v1')");
   await cdp('DOM.enable');
   const documentNode = await cdp('DOM.getDocument', { depth: 1 });
   const fileInput = await cdp('DOM.querySelector', {
@@ -193,6 +200,13 @@ if (persistenceDirectory) {
   if (!fileInput.nodeId) throw new Error('Map import input was not found.');
   await cdp('DOM.setFileInputFiles', { files: [archivePath], nodeId: fileInput.nodeId });
   await waitFor("document.querySelector('.map-title input')?.value === 'Balanced UI Smoke'");
+  await waitFor(`(() => {
+    const value = localStorage.getItem('wulfram-forge-project-v1');
+    if (!value) return false;
+    const parsed = JSON.parse(value);
+    return parsed.metadata?.['generator.version']
+      && parsed.metadata['generator.version'] === parsed.baseLayouts?.[0]?.metadata?.['generator.version'];
+  })()`);
   const importNotice = await evaluate("document.querySelector('.statusbar')?.textContent");
   if (!importNotice?.includes('Project Balanced UI Smoke imported')) {
     throw new Error(`Exported map did not import through the UI: ${importNotice}`);
