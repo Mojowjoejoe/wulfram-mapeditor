@@ -8,6 +8,7 @@ fork, verification, pull-request, administrator-review, and release workflow.
 ## What works
 
 - Full map lifecycle: new map, import, edit, validate, local save/autosave, undo/redo, and ZIP export.
+- Seeded balanced-map candidate generation with open-field, three-route, and ring-center terrain; exact 180° terrain/team pairing; normal Forge legality checks; independent slope, objective-access, and separated-route gates; side-by-side candidate comparison; and one-action apply/undo. Passing these offline gates does not replace side-swapped live playtesting. See [the generator contract](docs/BALANCED_MAP_GENERATOR.md) and [corpus calibration](docs/MAP_CORPUS_CALIBRATION.md).
 - Terrain mode with raise, lower, flatten, smooth, exact-height, and original-texture paint brushes. Every tool supports Round, Square, or Diamond footprints and Soft, Linear, or Hard edges; the Flat pad preset makes a hard square that stays level while it is raised or lowered. Painting updates the original packed cell grid and corner tags; the GPU combines full-resolution source textures using Wulfram's binary transition masks and nearest-neighbor texel sampling.
 - All 11 original skyboxes are selectable under Terrain, with Crossroads' Starset as the default. The selected sky survives autosave, undo/redo, Git source, and game ZIP export. New maps use the original `backface` checkerboard to mark unpainted terrain.
 - Event-driven 3D rendering with static shadow reuse, frame-coalesced pointer sampling, GPU terrain texture sampling, and independent terrain/texture/unit update paths.
@@ -48,6 +49,12 @@ npm test
 npm run verify:formats
 npm run build
 ```
+
+To reproduce the browser interaction smoke test, start Chrome with remote debugging
+on port `9223`, open the local editor, then run
+`node tools/smoke-balanced-ui.mjs`. The script verifies generation, gate display,
+selection, and apply, and writes before/after screenshots under `artifacts/` by
+default.
 
 `npm test` discovers every original map under `../wulfram-debug/data/maps` (or `WULFRAM_MAPS_DIR`), then runs each through the actual editor writers and ZIP packager. It reloads the generated files and compares terrain dimensions, every height and texture index, tag maps, every original state as a separate base layout, unit order/types, cargo subtypes, teams, positions, rotations, active flags, metadata, JSON layouts, and browser backup. It also matches all extracted template units back to their source state rows, tests brush footprints/hard height stamps, model-bounds terrain fitting, grayscale shaping/smoothing, normalized texture blending, 3D-transform coordinate conversion, scoped repository writes, and the branch/commit/push/PR lifecycle against temporary Git remotes. The checked-in Crossroads map is used as a portable fallback when the sibling asset tree is unavailable.
 

@@ -251,6 +251,44 @@
 .repository-start-help button { width: max-content; }
 .repository-start-help button svg { width: 12px; }
 .repository-wizard-footer { position: sticky; bottom: -16px; border-color: #353b40; background: #171a1df2; }
+.balanced-generator-dialog { width: min(760px, calc(100vw - 28px)); max-width: 760px; max-height: calc(100dvh - 28px); overflow: auto; border: 1px solid #41474c; border-radius: 6px; background: #171a1d; box-shadow: 0 24px 80px #000c; }
+.balanced-generator-dialog [data-slot='dialog-title'] { color: #f0ede8; font-size: 15px; }
+.balanced-generator-dialog [data-slot='dialog-description'] { color: #8a9298; font-size: 10px; line-height: 1.5; }
+.balanced-generator-form { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+.balanced-generator-form > label:not(.number-field) { display: grid; gap: 4px; color: #727a80; font-size: 8px; font-weight: 750; }
+.balanced-generator-form input,
+.balanced-generator-form select { width: 100%; height: 30px; padding: 0 7px; border: 1px solid #343a3f; border-radius: 3px; outline: 0; color: #d5d4d0; background: #111416; font: 9px var(--font-geist-mono), monospace; }
+.balanced-generator-form input:focus,
+.balanced-generator-form select:focus { border-color: #a2663f; }
+.balanced-profile-note { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 10px; border: 1px solid #493929; border-radius: 4px; color: #80776f; background: #1d1815; font: 8px var(--font-geist-mono), monospace; }
+.balanced-profile-note strong { color: #eda16b; white-space: nowrap; }
+.balanced-generator-error { display: flex; align-items: center; gap: 7px; padding: 8px; border: 1px solid #5a302d; border-radius: 4px; color: #e4867d; background: #241817; font-size: 9px; }
+.balanced-generator-error svg { width: 14px; }
+.balanced-candidate-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; }
+.balanced-candidate-grid > button { display: grid; gap: 7px; padding: 10px; border: 1px solid #373d42; border-radius: 4px; color: #aeb2b4; background: #111416; text-align: left; }
+.balanced-candidate-grid > button:hover,
+.balanced-candidate-grid > button.selected { border-color: #98613e; background: #211b17; }
+.balanced-candidate-grid > button.pass.selected { box-shadow: inset 0 0 0 1px #5ebc8744; }
+.balanced-candidate-grid > button.fail { border-color: #4c3331; }
+.balanced-candidate-grid > button > span { display: flex; align-items: center; gap: 6px; }
+.balanced-candidate-grid > button svg { width: 14px; color: #e86b60; }
+.balanced-candidate-grid > button.pass svg { color: #5ebc87; }
+.balanced-candidate-grid > button strong { color: #e0ded9; font-size: 10px; }
+.balanced-candidate-grid > button small { min-height: 30px; color: #777f85; font-size: 8px; line-height: 1.4; }
+.balanced-candidate-grid dl { display: grid; gap: 3px; margin: 0; }
+.balanced-candidate-grid dl div { display: flex; justify-content: space-between; gap: 8px; }
+.balanced-candidate-grid dt { color: #697177; font-size: 8px; }
+.balanced-candidate-grid dd { color: #c2c4c4; font: 8px var(--font-geist-mono), monospace; }
+.balanced-gate-list { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; max-height: 190px; overflow: auto; }
+.balanced-gate-list > div { display: grid; grid-template-columns: 16px 1fr; gap: 6px; padding: 7px; border: 1px solid #343a3f; border-radius: 4px; background: #111416; }
+.balanced-gate-list > div.fail { border-color: #5a302d; background: #241817; }
+.balanced-gate-list svg { width: 13px; color: #5ebc87; }
+.balanced-gate-list .fail svg { color: #e86b60; }
+.balanced-gate-list strong,
+.balanced-gate-list small { display: block; }
+.balanced-gate-list strong { color: #d3d2ce; font-size: 8px; text-transform: uppercase; }
+.balanced-gate-list small { margin-top: 2px; color: #7e878d; font-size: 8px; line-height: 1.4; }
+.balanced-generator-footer { position: sticky; bottom: -16px; border-color: #353b40; background: #171a1df2; }
 .heightmap-dialog { width: min(540px, calc(100vw - 28px)); max-width: 540px; max-height: calc(100dvh - 28px); overflow: auto; border: 1px solid #41474c; border-radius: 6px; background: #171a1d; box-shadow: 0 24px 80px #000c; }
 .heightmap-preview { position: relative; overflow: hidden; height: 150px; border: 1px solid #3b4247; border-radius: 4px; background: #0a0c0d; }
 .heightmap-preview img { width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; }

@@ -25,6 +25,7 @@ import {
   Save,
   Search,
   Settings2,
+  Sparkles,
   Trash2,
   Undo2,
   Upload,
@@ -42,6 +43,14 @@ import {
 } from '@/components/ui/dialog';
 import { BaseTemplatePreview } from '@/components/editor/base-template-preview';
 import { TerrainViewport, type EditorMode, type ModelTransformMode, type StrokePhase, type TerrainTool } from '@/components/editor/terrain-viewport';
+import { analyzeBalancedProject, type BalancedProjectAnalysis } from '@/lib/balanced-map-analysis';
+import {
+  BALANCED_GENERATOR_VERSION,
+  BALANCED_STANDARD_RELIEF,
+  generateBalancedProject,
+  type BalancedMapTopology,
+  type BalancedProjectResult,
+} from '@/lib/balanced-map-generator';
 import { createMapArchive, readMapArchive, safeMapName } from '@/lib/map-package';
 import { heightmapMidpointHeight, heightsFromGrayscaleRgba, recenterHeightmapRange } from '@/lib/heightmap';
 import { constrainEntityTransform, hasLockedAltitudeAndRotation } from '@/lib/model-transform';
@@ -144,8 +153,28 @@ interface DirtyScopes {
   base: boolean;
 }
 
+interface BalancedCandidate {
+  result: BalancedProjectResult;
+  analysis: BalancedProjectAnalysis;
+}
+
 const STORAGE_KEY = 'wulfram-forge-project-v1';
 const MAX_HISTORY = 32;
+const BALANCED_TOPOLOGIES: Array<{ id: BalancedMapTopology; label: string; description: string }> = [
+  { id: 'open-field', label: 'Open field', description: 'Broad movement space with a central contest lane.' },
+  { id: 'three-route', label: 'Three route', description: 'A main route plus two separated flanking routes.' },
+  { id: 'ring-center', label: 'Ring center', description: 'A defended central objective with a surrounding rotation lane.' },
+];
+const BALANCED_TEXTURE_CHOICES = [
+  ['canyon003', 'Canyon'],
+  ['4sand001', 'Desert sand'],
+  ['3grass001', 'Grass'],
+  ['1snow001', 'Snow'],
+  ['8ice001', 'Ice'],
+  ['1martian001', 'Martian'],
+  ['reddirt001', 'Red dirt'],
+  ['grandcan001', 'Grand canyon'],
+] as const;
 const TERRAIN_TOOL_LABELS: Record<TerrainTool, string> = {
   sculpt: 'Raise',
   lower: 'Lower',
@@ -292,6 +321,15 @@ export function EditorApp() {
   const [heightmapFile, setHeightmapFile] = useState<File>();
   const [heightmapPreviewUrl, setHeightmapPreviewUrl] = useState('');
   const [heightmapDialogOpen, setHeightmapDialogOpen] = useState(false);
+  const [balancedDialogOpen, setBalancedDialogOpen] = useState(false);
+  const [balancedSeed, setBalancedSeed] = useState('forge-001');
+  const [balancedName, setBalancedName] = useState('Generated balanced map');
+  const [balancedRelief, setBalancedRelief] = useState(BALANCED_STANDARD_RELIEF);
+  const [balancedTextureName, setBalancedTextureName] = useState('canyon003');
+  const [balancedTemplateId, setBalancedTemplateId] = useState('curated-base-in-a-box');
+  const [balancedCandidates, setBalancedCandidates] = useState<BalancedCandidate[]>([]);
+  const [balancedSelectedIndex, setBalancedSelectedIndex] = useState(0);
+  const [balancedError, setBalancedError] = useState('');
   const [undoStack, setUndoStack] = useState<WulframProject[]>([]);
   const [redoStack, setRedoStack] = useState<WulframProject[]>([]);
   const [dirtyScopes, setDirtyScopes] = useState<DirtyScopes>({ terrain: false, base: false });
@@ -336,6 +374,7 @@ export function EditorApp() {
         || mode !== 'base'
         || repositoryWizardOpen
         || heightmapDialogOpen
+        || balancedDialogOpen
         || (!selectedPlacementKey && !selectedTemplateId)) return;
       event.preventDefault();
       setSelectedPlacementKey('');
@@ -344,7 +383,7 @@ export function EditorApp() {
     };
     window.addEventListener('keydown', cancelPlacement);
     return () => window.removeEventListener('keydown', cancelPlacement);
-  }, [heightmapDialogOpen, mode, repositoryWizardOpen, selectedPlacementKey, selectedTemplateId]);
+  }, [balancedDialogOpen, heightmapDialogOpen, mode, repositoryWizardOpen, selectedPlacementKey, selectedTemplateId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1336,6 +1375,87 @@ export function EditorApp() {
     setNotice({ tone: 'ready', text: 'Blank 129 × 129 map created with the backface checkerboard' });
   }, [dirty, markDirty, project, pushHistory]);
 
+  const openBalancedGenerator = useCallback(() => {
+    setBalancedName(project?.name && project.name !== 'Untitled map'
+      ? `${project.name} balanced`
+      : 'Generated balanced map');
+    setBalancedCandidates([]);
+    setBalancedSelectedIndex(0);
+    setBalancedError('');
+    setBalancedDialogOpen(true);
+  }, [project]);
+
+  const buildBalancedCandidates = useCallback(() => {
+    const seed = balancedSeed.trim();
+    const template = baseTemplates?.templates.find((item) => item.id === balancedTemplateId);
+    if (!seed) {
+      setBalancedError('Enter a seed so this map can be reproduced.');
+      return;
+    }
+    if (!template || !manifest) {
+      setBalancedError('Choose an available base template.');
+      return;
+    }
+    try {
+      setNotice({ tone: 'working', text: 'Generating and independently analyzing three balanced candidates…' });
+      const candidates = BALANCED_TOPOLOGIES.map(({ id }): BalancedCandidate => {
+        const result = generateBalancedProject({
+          seed,
+          topology: id,
+          relief: balancedRelief,
+          textureName: balancedTextureName,
+          name: balancedName.trim() || 'Generated balanced map',
+        }, template, manifest);
+        return {
+          result,
+          analysis: analyzeBalancedProject(
+            result.project,
+            result.baseAnchors,
+            result.objectiveAnchors,
+          ),
+        };
+      });
+      const firstPassing = candidates.findIndex((candidate) => candidate.analysis.passed);
+      setBalancedCandidates(candidates);
+      setBalancedSelectedIndex(firstPassing >= 0 ? firstPassing : 0);
+      setBalancedError('');
+      setNotice({
+        tone: firstPassing >= 0 ? 'ready' : 'error',
+        text: firstPassing >= 0
+          ? `${candidates.filter((candidate) => candidate.analysis.passed).length} of 3 generated candidates passed every offline gate`
+          : 'No generated candidate passed every offline gate; adjust the seed, relief, or base template.',
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Balanced generation failed.';
+      setBalancedCandidates([]);
+      setBalancedError(message);
+      setNotice({ tone: 'error', text: message });
+    }
+  }, [balancedName, balancedRelief, balancedSeed, balancedTemplateId, balancedTextureName, baseTemplates?.templates, manifest]);
+
+  const applyBalancedCandidate = useCallback(() => {
+    const candidate = balancedCandidates[balancedSelectedIndex];
+    if (!candidate || !candidate.analysis.passed) return;
+    if (dirty && !window.confirm('Replace the current map with this generated candidate? Your current project is autosaved locally, but unexported changes will leave the canvas.')) return;
+    if (project) pushHistory(cloneProject(project));
+    setProject(cloneProject(candidate.result.project));
+    setRepositorySlug('');
+    setLastPullRequestUrl('');
+    setRedoStack([]);
+    setSelectedEntityId(undefined);
+    setSelectedPlacementKey('');
+    setSelectedTemplateId(undefined);
+    setMode('terrain');
+    markDirty('both');
+    setBalancedDialogOpen(false);
+    const topology = BALANCED_TOPOLOGIES.find((item) => item.id === candidate.result.identity.topology)?.label
+      ?? candidate.result.identity.topology;
+    setNotice({
+      tone: 'ready',
+      text: `${topology} candidate applied · ${(candidate.analysis.terrain.metrics.traversableFraction * 100).toFixed(1)}% traversable proxy · export still requires review and playtesting`,
+    });
+  }, [balancedCandidates, balancedSelectedIndex, dirty, markDirty, project, pushHistory]);
+
   if (!manifest || !baseTemplates || !project) {
     return (
       <main className="loading-screen">
@@ -1348,6 +1468,11 @@ export function EditorApp() {
 
   const errorCount = issues.filter((issue) => issue.severity === 'error').length;
   const warningCount = issues.filter((issue) => issue.severity === 'warning').length;
+  const selectedBalancedCandidate = balancedCandidates[balancedSelectedIndex];
+  const selectedBalancedCandidatePassed = Boolean(
+    selectedBalancedCandidate
+    && selectedBalancedCandidate.analysis.passed,
+  );
   const activePlacementKey = selectedTemplate ? `template:${selectedTemplate.id}` : selectedPlacementKey;
   const modeLabel = mode === 'terrain'
     ? TERRAIN_TOOL_LABELS[terrainTool]
@@ -1507,6 +1632,122 @@ export function EditorApp() {
         </DialogContent>
       </Dialog>
 
+      <Dialog onOpenChange={setBalancedDialogOpen} open={balancedDialogOpen}>
+        <DialogContent className="balanced-generator-dialog">
+          <DialogHeader>
+            <DialogTitle>Generate balanced-map candidates</DialogTitle>
+            <DialogDescription>
+              Build three reproducible 180° rotational layouts, then independently test symmetry, slope coverage, base access, objective access, and separated routes. A passing result is an offline fairness candidate—not proof of live match balance.
+            </DialogDescription>
+          </DialogHeader>
+
+          <section className="balanced-generator-form">
+            <label>
+              Map name
+              <input maxLength={100} onChange={(event) => setBalancedName(event.target.value)} value={balancedName} />
+            </label>
+            <label>
+              Reproducible seed
+              <input maxLength={200} onChange={(event) => setBalancedSeed(event.target.value)} value={balancedSeed} />
+            </label>
+            <label>
+              Starter base
+              <select onChange={(event) => setBalancedTemplateId(event.target.value)} value={balancedTemplateId}>
+                {baseTemplates.templates.map((template) => (
+                  <option key={template.id} value={template.id}>
+                    {template.curated ? 'Curated · ' : ''}{template.name} · {template.unitCount} units
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Terrain theme
+              <select onChange={(event) => setBalancedTextureName(event.target.value)} value={balancedTextureName}>
+                {BALANCED_TEXTURE_CHOICES.filter(([name]) => manifest.terrainTextures[name]).map(([name, label]) => (
+                  <option key={name} value={name}>{label} · {name}</option>
+                ))}
+              </select>
+            </label>
+            <NumberField
+              label="Terrain relief"
+              max={1200}
+              min={100}
+              onChange={(value) => setBalancedRelief(value)}
+              step={10}
+              value={balancedRelief}
+            />
+          </section>
+
+          <div className="balanced-profile-note">
+            <strong>{BALANCED_GENERATOR_VERSION}</strong>
+            <span>129 × 129 · 5600 × 5600 world · 22° slope proxy · 58% minimum coverage · 2 routes per team</span>
+          </div>
+
+          {balancedError && <p className="balanced-generator-error"><AlertTriangle />{balancedError}</p>}
+
+          {balancedCandidates.length > 0 && (
+            <>
+              <section className="balanced-candidate-grid" aria-label="Generated candidates">
+                {balancedCandidates.map((candidate, index) => {
+                  const topology = BALANCED_TOPOLOGIES[index];
+                  const passed = candidate.analysis.passed;
+                  return (
+                    <button
+                      aria-pressed={balancedSelectedIndex === index}
+                      className={`${balancedSelectedIndex === index ? 'selected ' : ''}${passed ? 'pass' : 'fail'}`}
+                      key={candidate.result.identity.topology}
+                      onClick={() => setBalancedSelectedIndex(index)}
+                      type="button"
+                    >
+                      <span>{passed ? <CheckCircle2 /> : <AlertTriangle />}<strong>{topology.label}</strong></span>
+                      <small>{topology.description}</small>
+                      <dl>
+                        <div><dt>Coverage</dt><dd>{(candidate.analysis.terrain.metrics.traversableFraction * 100).toFixed(1)}%</dd></div>
+                        <div><dt>Routes</dt><dd>{candidate.analysis.terrain.metrics.teams.map((item) => item.routeCount).join(' / ')}</dd></div>
+                        <div><dt>Map errors</dt><dd>{candidate.analysis.projectErrorCount}</dd></div>
+                      </dl>
+                    </button>
+                  );
+                })}
+              </section>
+
+              {selectedBalancedCandidate && (
+                <section className="balanced-gate-list">
+                  {selectedBalancedCandidate.analysis.terrain.gates.map((gate) => (
+                    <div className={gate.passed ? 'pass' : 'fail'} key={gate.code}>
+                      {gate.passed ? <CheckCircle2 /> : <AlertTriangle />}
+                      <span><strong>{gate.code.replaceAll('-', ' ')}</strong><small>{gate.message}</small></span>
+                    </div>
+                  ))}
+                  <div className={selectedBalancedCandidate.analysis.entityPairing.passed ? 'pass' : 'fail'}>
+                    {selectedBalancedCandidate.analysis.entityPairing.passed ? <CheckCircle2 /> : <AlertTriangle />}
+                    <span>
+                      <strong>entity pairing</strong>
+                      <small>{selectedBalancedCandidate.analysis.entityPairing.message}</small>
+                    </span>
+                  </div>
+                  <div className={selectedBalancedCandidate.analysis.projectErrorCount === 0 ? 'pass' : 'fail'}>
+                    {selectedBalancedCandidate.analysis.projectErrorCount === 0 ? <CheckCircle2 /> : <AlertTriangle />}
+                    <span>
+                      <strong>base-layout validation</strong>
+                      <small>{selectedBalancedCandidate.analysis.projectErrorCount === 0
+                        ? `No map errors${selectedBalancedCandidate.analysis.projectWarningCount ? `; ${selectedBalancedCandidate.analysis.projectWarningCount} warning(s).` : '.'}`
+                        : `${selectedBalancedCandidate.analysis.projectErrorCount} blocking map error(s).`}</small>
+                    </span>
+                  </div>
+                </section>
+              )}
+            </>
+          )}
+
+          <DialogFooter className="balanced-generator-footer">
+            <Button onClick={() => setBalancedDialogOpen(false)} variant="outline">Cancel</Button>
+            <Button onClick={buildBalancedCandidates} variant="outline"><RefreshCw /> Generate three</Button>
+            <Button disabled={!selectedBalancedCandidatePassed} onClick={applyBalancedCandidate}><Sparkles /> Apply passing candidate</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <header className="topbar">
         <button className="brand-lockup" onClick={() => window.open('https://github.com/blackwatergaming/wulfram-mapeditor', '_blank')} type="button">
           <span className="brand-mark"><Layers3 /></span>
@@ -1523,6 +1764,7 @@ export function EditorApp() {
           <Badge className="source-badge" variant="outline">ORIGINAL ASSETS</Badge>
         </div>
         <div className="top-actions">
+          <Button onClick={openBalancedGenerator} size="sm" title="Generate and analyze balanced-map candidates" variant="ghost"><Sparkles /> Balanced</Button>
           <Button onClick={newMap} size="sm" title="New map" variant="ghost"><Plus /> New</Button>
           <Button onClick={() => importRef.current?.click()} size="sm" title="Import map or heightmap" variant="ghost"><FolderOpen /> Import</Button>
           <Button onClick={saveLocal} size="sm" title="Save the complete editor project in this browser" variant="ghost"><Save /> Save local</Button>

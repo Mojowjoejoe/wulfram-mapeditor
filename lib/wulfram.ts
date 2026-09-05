@@ -646,6 +646,7 @@ export function instantiateBaseTemplate(
   yawRadians = 0,
   manifest?: AssetManifest,
   placementMargin = STRUCTURE_BOTTOM_MARGIN,
+  idFactory: (prefix: string) => string = createId,
 ): BaseTemplatePlacement {
   const units = template.units.filter((unit) => {
     const entity = { token: unit.token, subtype: unit.subtype, team };
@@ -703,7 +704,7 @@ export function instantiateBaseTemplate(
     const terrainConformedHeight = snap?.height
       ?? sampleHeight(terrain, x, y) + (Number.isFinite(unit.groundOffset) ? unit.groundOffset : 0);
     return {
-      id: createId(`${template.id}-${index + 1}`),
+      id: idFactory(`${template.id}-${index + 1}`),
       token: unit.token,
       subtype: unit.subtype,
       team: Math.trunc(team),
