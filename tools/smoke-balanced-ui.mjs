@@ -2,10 +2,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const debuggerPort = Number(process.env.WULFRAM_CDP_PORT ?? 9223);
+const expectedUrlPrefix = process.env.WULFRAM_CDP_URL_PREFIX ?? 'http://localhost:3000';
 const outputPath = path.resolve(process.argv[2] ?? 'artifacts/balanced-generator-dialog.png');
 const targets = await fetch(`http://127.0.0.1:${debuggerPort}/json/list`).then((response) => response.json());
-const page = targets.find((target) => target.type === 'page' && target.url.startsWith('http://localhost:3000'));
-if (!page) throw new Error('Open http://localhost:3000 in a Chromium browser with remote debugging enabled.');
+const page = targets.find((target) => target.type === 'page' && target.url.startsWith(expectedUrlPrefix));
+if (!page) throw new Error(`Open ${expectedUrlPrefix} in a Chromium browser with remote debugging enabled.`);
 
 const socket = new WebSocket(page.webSocketDebuggerUrl);
 await new Promise((resolve, reject) => {

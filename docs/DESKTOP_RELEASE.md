@@ -66,3 +66,20 @@ On the 2560×1600, 200%-scaled verification display, WebView2 reported a
 60 frames per second both idle and during keyboard camera motion. The probe also
 decodes a shipped texture inside the live origin and records a screenshot plus
 console/network failures.
+
+## Balanced generator desktop smoke check
+
+The balanced-generator smoke probe can target either the development server or
+the embedded desktop origin. Launch a built executable with remote debugging,
+then set both variables before running the probe:
+
+```powershell
+$env:WULFRAM_CDP_PORT = '9224'
+$env:WULFRAM_CDP_URL_PREFIX = 'https://wulfram-forge.local'
+node .\tools\smoke-balanced-ui.mjs .\artifacts\balanced-generator-desktop.png
+```
+
+The probe reloads the app, opens the generator, creates three candidates, requires
+at least one passing candidate and all nine report gates, applies the selected
+candidate, and writes before/after screenshots. It is an interaction smoke test;
+it does not replace save/export/reload testing or live map playtesting.
