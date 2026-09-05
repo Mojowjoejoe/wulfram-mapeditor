@@ -79,10 +79,12 @@ $env:WULFRAM_CDP_URL_PREFIX = 'https://wulfram-forge.local'
 node .\tools\smoke-balanced-ui.mjs .\artifacts\balanced-generator-desktop.png
 ```
 
-The probe reloads the app, opens the generator, creates three candidates, requires
-at least one passing candidate and all eleven report gates, applies the selected
-candidate, and writes before/after screenshots. Its JSON receipt includes candidate
-generation time and the renderer's used and allocated JavaScript heap sizes.
+The probe reloads the app, opens the generator, first cancels an active batch and
+proves that the current project did not change, then creates three candidates. It
+requires three accessible relief previews, at least one passing candidate, and all
+eleven report gates before applying the selected candidate and writing before/after
+screenshots. Its JSON receipt includes candidate generation time and the renderer's
+used and allocated JavaScript heap sizes.
 
 Set the logical viewport and device scale factor to reproduce a Windows display
 configuration. The probe rejects document overflow at the configured viewport:

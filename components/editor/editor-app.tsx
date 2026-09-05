@@ -42,6 +42,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { BaseTemplatePreview } from '@/components/editor/base-template-preview';
+import { BalancedCandidatePreview } from '@/components/editor/balanced-candidate-preview';
 import { TerrainViewport, type EditorMode, type ModelTransformMode, type StrokePhase, type TerrainTool } from '@/components/editor/terrain-viewport';
 import { analyzeBalancedProject, type BalancedProjectAnalysis } from '@/lib/balanced-map-analysis';
 import {
@@ -330,6 +331,8 @@ export function EditorApp() {
   const [balancedCandidates, setBalancedCandidates] = useState<BalancedCandidate[]>([]);
   const [balancedSelectedIndex, setBalancedSelectedIndex] = useState(0);
   const [balancedError, setBalancedError] = useState('');
+  const [balancedGenerating, setBalancedGenerating] = useState(false);
+  const [balancedGenerationProgress, setBalancedGenerationProgress] = useState(0);
   const [undoStack, setUndoStack] = useState<WulframProject[]>([]);
   const [redoStack, setRedoStack] = useState<WulframProject[]>([]);
   const [dirtyScopes, setDirtyScopes] = useState<DirtyScopes>({ terrain: false, base: false });
@@ -348,6 +351,7 @@ export function EditorApp() {
   const importRef = useRef<HTMLInputElement>(null);
   const heightmapRef = useRef<HTMLInputElement>(null);
   const layoutMetadataRef = useRef<HTMLTextAreaElement>(null);
+  const balancedGenerationTokenRef = useRef(0);
   const strokeSnapshotRef = useRef<WulframProject | null>(null);
   const levelHeightRef = useRef(0);
   const dirty = dirtyScopes.terrain || dirtyScopes.base;
@@ -1376,16 +1380,29 @@ export function EditorApp() {
   }, [dirty, markDirty, project, pushHistory]);
 
   const openBalancedGenerator = useCallback(() => {
+    balancedGenerationTokenRef.current += 1;
     setBalancedName(project?.name && project.name !== 'Untitled map'
       ? `${project.name} balanced`
       : 'Generated balanced map');
     setBalancedCandidates([]);
     setBalancedSelectedIndex(0);
     setBalancedError('');
+    setBalancedGenerating(false);
+    setBalancedGenerationProgress(0);
     setBalancedDialogOpen(true);
   }, [project]);
 
-  const buildBalancedCandidates = useCallback(() => {
+  const closeBalancedGenerator = useCallback(() => {
+    balancedGenerationTokenRef.current += 1;
+    if (balancedGenerating) {
+      setNotice({ tone: 'ready', text: 'Balanced candidate generation canceled; the current map was not changed' });
+    }
+    setBalancedGenerating(false);
+    setBalancedGenerationProgress(0);
+    setBalancedDialogOpen(false);
+  }, [balancedGenerating]);
+
+  const buildBalancedCandidates = useCallback(async () => {
     const seed = balancedSeed.trim();
     const template = baseTemplates?.templates.find((item) => item.id === balancedTemplateId);
     if (!seed) {
@@ -1396,9 +1413,19 @@ export function EditorApp() {
       setBalancedError('Choose an available base template.');
       return;
     }
+    const generationToken = balancedGenerationTokenRef.current + 1;
+    balancedGenerationTokenRef.current = generationToken;
     try {
+      setBalancedCandidates([]);
+      setBalancedSelectedIndex(0);
+      setBalancedError('');
+      setBalancedGenerating(true);
+      setBalancedGenerationProgress(0);
       setNotice({ tone: 'working', text: 'Generating and independently analyzing three balanced candidates…' });
-      const candidates = BALANCED_TOPOLOGIES.map(({ id }): BalancedCandidate => {
+      const candidates: BalancedCandidate[] = [];
+      for (const { id } of BALANCED_TOPOLOGIES) {
+        await new Promise<void>((resolve) => { window.setTimeout(resolve, 0); });
+        if (balancedGenerationTokenRef.current !== generationToken) return;
         const result = generateBalancedProject({
           seed,
           topology: id,
@@ -1406,15 +1433,18 @@ export function EditorApp() {
           textureName: balancedTextureName,
           name: balancedName.trim() || 'Generated balanced map',
         }, template, manifest);
-        return {
+        candidates.push({
           result,
           analysis: analyzeBalancedProject(
             result.project,
             result.baseAnchors,
             result.objectiveAnchors,
           ),
-        };
-      });
+        });
+        if (balancedGenerationTokenRef.current !== generationToken) return;
+        setBalancedCandidates([...candidates]);
+        setBalancedGenerationProgress(candidates.length);
+      }
       const firstPassing = candidates.findIndex((candidate) => candidate.analysis.passed);
       setBalancedCandidates(candidates);
       setBalancedSelectedIndex(firstPassing >= 0 ? firstPassing : 0);
@@ -1426,10 +1456,13 @@ export function EditorApp() {
           : 'No generated candidate passed every offline gate; adjust the seed, relief, or base template.',
       });
     } catch (error) {
+      if (balancedGenerationTokenRef.current !== generationToken) return;
       const message = error instanceof Error ? error.message : 'Balanced generation failed.';
       setBalancedCandidates([]);
       setBalancedError(message);
       setNotice({ tone: 'error', text: message });
+    } finally {
+      if (balancedGenerationTokenRef.current === generationToken) setBalancedGenerating(false);
     }
   }, [balancedName, balancedRelief, balancedSeed, balancedTemplateId, balancedTextureName, baseTemplates?.templates, manifest]);
 
@@ -1632,7 +1665,7 @@ export function EditorApp() {
         </DialogContent>
       </Dialog>
 
-      <Dialog onOpenChange={setBalancedDialogOpen} open={balancedDialogOpen}>
+      <Dialog onOpenChange={(open) => { if (open) setBalancedDialogOpen(true); else closeBalancedGenerator(); }} open={balancedDialogOpen}>
         <DialogContent className="balanced-generator-dialog">
           <DialogHeader>
             <DialogTitle>Generate balanced-map candidates</DialogTitle>
@@ -1644,15 +1677,15 @@ export function EditorApp() {
           <section className="balanced-generator-form">
             <label>
               Map name
-              <input maxLength={100} onChange={(event) => setBalancedName(event.target.value)} value={balancedName} />
+              <input disabled={balancedGenerating} maxLength={100} onChange={(event) => setBalancedName(event.target.value)} value={balancedName} />
             </label>
             <label>
               Reproducible seed
-              <input maxLength={200} onChange={(event) => setBalancedSeed(event.target.value)} value={balancedSeed} />
+              <input disabled={balancedGenerating} maxLength={200} onChange={(event) => setBalancedSeed(event.target.value)} value={balancedSeed} />
             </label>
             <label>
               Starter base
-              <select onChange={(event) => setBalancedTemplateId(event.target.value)} value={balancedTemplateId}>
+              <select disabled={balancedGenerating} onChange={(event) => setBalancedTemplateId(event.target.value)} value={balancedTemplateId}>
                 {baseTemplates.templates.map((template) => (
                   <option key={template.id} value={template.id}>
                     {template.curated ? 'Curated · ' : ''}{template.name} · {template.unitCount} units
@@ -1662,7 +1695,7 @@ export function EditorApp() {
             </label>
             <label>
               Terrain theme
-              <select onChange={(event) => setBalancedTextureName(event.target.value)} value={balancedTextureName}>
+              <select disabled={balancedGenerating} onChange={(event) => setBalancedTextureName(event.target.value)} value={balancedTextureName}>
                 {BALANCED_TEXTURE_CHOICES.filter(([name]) => manifest.terrainTextures[name]).map(([name, label]) => (
                   <option key={name} value={name}>{label} · {name}</option>
                 ))}
@@ -1670,6 +1703,7 @@ export function EditorApp() {
             </label>
             <NumberField
               label="Terrain relief"
+              disabled={balancedGenerating}
               max={1200}
               min={100}
               onChange={(value) => setBalancedRelief(value)}
@@ -1685,11 +1719,20 @@ export function EditorApp() {
 
           {balancedError && <p className="balanced-generator-error"><AlertTriangle />{balancedError}</p>}
 
+          {balancedGenerating && (
+            <output aria-live="polite" className="balanced-generation-progress">
+              <span style={{ width: `${balancedGenerationProgress / BALANCED_TOPOLOGIES.length * 100}%` }} />
+              <strong>Generating candidate {Math.min(balancedGenerationProgress + 1, BALANCED_TOPOLOGIES.length)} of {BALANCED_TOPOLOGIES.length}</strong>
+              <small>Cancel safely between candidates; the current map and repository remain unchanged.</small>
+            </output>
+          )}
+
           {balancedCandidates.length > 0 && (
             <>
               <section className="balanced-candidate-grid" aria-label="Generated candidates">
                 {balancedCandidates.map((candidate, index) => {
-                  const topology = BALANCED_TOPOLOGIES[index];
+                  const topology = BALANCED_TOPOLOGIES.find((item) => item.id === candidate.result.identity.topology)
+                    ?? BALANCED_TOPOLOGIES[index];
                   const passed = candidate.analysis.passed;
                   return (
                     <button
@@ -1701,6 +1744,7 @@ export function EditorApp() {
                     >
                       <span>{passed ? <CheckCircle2 /> : <AlertTriangle />}<strong>{topology.label}</strong></span>
                       <small>{topology.description}</small>
+                      <BalancedCandidatePreview label={topology.label} result={candidate.result} />
                       <dl>
                         <div><dt>Coverage</dt><dd>{(candidate.analysis.terrain.metrics.traversableFraction * 100).toFixed(1)}%</dd></div>
                         <div><dt>Connected</dt><dd>{(Math.min(...candidate.analysis.terrain.metrics.teams.map((item) => item.reachableFractionOfTraversable)) * 100).toFixed(1)}%</dd></div>
@@ -1743,9 +1787,9 @@ export function EditorApp() {
           )}
 
           <DialogFooter className="balanced-generator-footer">
-            <Button onClick={() => setBalancedDialogOpen(false)} variant="outline">Cancel</Button>
-            <Button onClick={buildBalancedCandidates} variant="outline"><RefreshCw /> Generate three</Button>
-            <Button disabled={!selectedBalancedCandidatePassed} onClick={applyBalancedCandidate}><Sparkles /> Apply passing candidate</Button>
+            <Button onClick={closeBalancedGenerator} variant="outline">{balancedGenerating ? 'Stop and close' : 'Cancel'}</Button>
+            <Button disabled={balancedGenerating} onClick={() => void buildBalancedCandidates()} variant="outline"><RefreshCw /> {balancedGenerating ? `Generating ${balancedGenerationProgress}/${BALANCED_TOPOLOGIES.length}` : 'Generate three'}</Button>
+            <Button disabled={balancedGenerating || !selectedBalancedCandidatePassed} onClick={applyBalancedCandidate}><Sparkles /> Apply passing candidate</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

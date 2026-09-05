@@ -19,10 +19,12 @@ The feature branch currently exposes a **Balanced** action in the Forge header:
 1. Enter a map name and reproducible text seed.
 2. Choose a base template, original terrain texture theme, and relief.
 3. Select **Generate three** to build the open-field, three-route, and ring-center
-   candidates from the same seed.
-4. Compare slope-proxy coverage, connected cleared terrain, reachable high ground,
-   separated route counts, map errors, and the full gate list. Failed candidates
-   remain visible but cannot be applied.
+   candidates from the same seed. Progress appears between candidates; **Stop and
+   close** invalidates the active batch without changing the project or repository.
+4. Compare each candidate's accessible isometric terrain-relief preview, base and
+   objective markers, slope-proxy coverage, connected cleared terrain, reachable
+   high ground, separated route counts, map errors, and full gate list. Failed
+   candidates remain visible but cannot be applied.
 5. Select a passing candidate and choose **Apply passing candidate**. The prior map
    becomes one undoable history entry; canceling the dialog changes nothing.
 
@@ -31,11 +33,11 @@ uplink, project generation adds one terrain-conformed uplink per team at exact
 rotationally paired positions. The completed project must still pass normal Forge
 validation; infrastructure errors cannot be hidden by the balance score.
 
-Current implementation limits are deliberate: the dialog does not yet render three
-independent 3D thumbnails, the center objective is an analysis region rather than a
-placed gameplay entity, route clearance uses a conservative grid-erosion proxy
-rather than verified vehicle footprints, and no generated map has yet passed live
-side-swapped playtesting.
+Current implementation limits are deliberate: candidate previews are lightweight
+isometric terrain reliefs rather than three independent interactive WebGL scenes,
+the center objective is an analysis region rather than a placed gameplay entity,
+route clearance uses a conservative grid-erosion proxy rather than verified vehicle
+footprints, and no generated map has yet passed live side-swapped playtesting.
 
 ## Versioned first-release profile
 

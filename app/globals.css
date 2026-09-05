@@ -264,6 +264,11 @@
 .balanced-profile-note strong { color: #eda16b; white-space: nowrap; }
 .balanced-generator-error { display: flex; align-items: center; gap: 7px; padding: 8px; border: 1px solid #5a302d; border-radius: 4px; color: #e4867d; background: #241817; font-size: 9px; }
 .balanced-generator-error svg { width: 14px; }
+.balanced-generation-progress { position: relative; display: grid; grid-template-columns: auto 1fr; gap: 2px 9px; overflow: hidden; padding: 9px 10px; border: 1px solid #493929; border-radius: 4px; background: #111416; }
+.balanced-generation-progress::before { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, #d5763830, transparent 65%); pointer-events: none; }
+.balanced-generation-progress > span { position: absolute; inset: auto auto 0 0; height: 2px; background: #ef873f; transition: width 160ms ease; }
+.balanced-generation-progress strong { position: relative; grid-column: 1 / -1; color: #e0ded9; font-size: 9px; }
+.balanced-generation-progress small { position: relative; grid-column: 1 / -1; color: #7e878d; font-size: 8px; }
 .balanced-candidate-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; }
 .balanced-candidate-grid > button { display: grid; gap: 7px; padding: 10px; border: 1px solid #373d42; border-radius: 4px; color: #aeb2b4; background: #111416; text-align: left; }
 .balanced-candidate-grid > button:hover,
@@ -275,6 +280,7 @@
 .balanced-candidate-grid > button.pass svg { color: #5ebc87; }
 .balanced-candidate-grid > button strong { color: #e0ded9; font-size: 10px; }
 .balanced-candidate-grid > button small { min-height: 30px; color: #777f85; font-size: 8px; line-height: 1.4; }
+.balanced-candidate-grid > button .balanced-candidate-preview { display: block; width: 100%; height: 92px; border: 1px solid #2f3438; border-radius: 3px; color: initial; background: #090b0c; }
 .balanced-candidate-grid dl { display: grid; gap: 3px; margin: 0; }
 .balanced-candidate-grid dl div { display: flex; justify-content: space-between; gap: 8px; }
 .balanced-candidate-grid dt { color: #697177; font-size: 8px; }
