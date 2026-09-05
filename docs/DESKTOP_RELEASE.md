@@ -49,7 +49,23 @@ adds more than 250 MB and must be serviced with application updates.
 
 Pushing a `v*` tag runs [the release workflow](../.github/workflows/release.yml),
 tests the portable fixture, builds the self-contained Windows artifact, records
-its SHA-256 digest, and attaches both files to a GitHub Release.
+its SHA-256 digest, and attaches the ZIP, Authenticode receipt, and checksum manifest
+to a GitHub Release. Tagged public releases fail closed unless the executable is
+successfully Authenticode-signed, RFC 3161 timestamped, and verified before packaging.
+
+Configure the release repository or protected `release` environment with these
+GitHub Actions secrets:
+
+- `WINDOWS_SIGNING_CERTIFICATE_BASE64`: base64-encoded PFX containing a trusted
+  Windows code-signing certificate and its private key
+- `WINDOWS_SIGNING_CERTIFICATE_PASSWORD`: the PFX import password
+
+The workflow imports the certificate into the ephemeral runner's current-user store,
+passes only its public SHA-1 thumbprint to SignTool, signs with SHA-256, timestamps
+with the configured RFC 3161 service, verifies the embedded signature, and removes
+the certificate and temporary PFX in an `always()` cleanup step. Manual workflow runs
+without secrets may still create an explicitly unsigned developer artifact; a `v*`
+tag may not.
 
 ## Headed performance and DPI check
 

@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import JSZip from 'jszip';
 
 import { createDesktopAssets } from './create-desktop-assets.mjs';
+import { resolveDesktopSigningConfiguration } from './desktop-signing.mjs';
 
 const ARCHIVE_DATE = new Date('2000-01-01T00:00:00.000Z');
 const workspace = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -47,6 +48,7 @@ async function main() {
   const versionOption = process.argv.indexOf('--version');
   const version = versionOption >= 0 ? process.argv[versionOption + 1] : packageVersion;
   if (!version || !/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(version)) throw new Error('Use --version with a semantic version such as 0.4.0.');
+  const signing = resolveDesktopSigningConfiguration();
 
   run(process.execPath, [path.join(workspace, 'node_modules', 'vite', 'bin', 'vite.js'), 'build', '--config', 'vite.desktop.config.ts']);
   await createDesktopAssets();
@@ -65,6 +67,20 @@ async function main() {
     `/p:Version=${version}`,
   ]);
 
+  const executable = path.join(publishDirectory, 'WulframForge.exe');
+  if (signing) {
+    run(signing.signToolPath, [
+      'sign',
+      '/sha1', signing.certificateThumbprint,
+      '/fd', 'SHA256',
+      '/tr', signing.timestampUrl,
+      '/td', 'SHA256',
+      executable,
+    ]);
+    run(signing.signToolPath, ['verify', '/pa', '/all', executable]);
+    console.log(`Authenticode signature verified for certificate ${signing.certificateThumbprint}.`);
+  }
+
   const zip = new JSZip();
   addDirectory(zip, publishDirectory, 'WulframForge');
   const fixedRuntime = process.env.WEBVIEW2_FIXED_RUNTIME_DIR;
@@ -80,6 +96,9 @@ async function main() {
     '',
     'Run WulframForge/WulframForge.exe.',
     'The .NET runtime and editor assets are included; Node.js is not required.',
+    signing
+      ? 'WulframForge.exe is Authenticode signed and RFC 3161 timestamped.'
+      : 'This local developer build is not Authenticode signed.',
     fixedRuntime
       ? 'A fixed Edge WebView2 runtime is included for offline use.'
       : 'Microsoft Edge WebView2 Evergreen Runtime is required (included with current Windows 11 installations).',
