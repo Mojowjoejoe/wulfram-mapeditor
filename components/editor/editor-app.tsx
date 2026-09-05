@@ -1683,6 +1683,19 @@ export function EditorApp() {
               Reproducible seed
               <input disabled={balancedGenerating} maxLength={200} onChange={(event) => setBalancedSeed(event.target.value)} value={balancedSeed} />
             </label>
+            <div className="balanced-seed-actions">
+              <Button disabled={balancedGenerating} onClick={() => setBalancedSeed(crypto.randomUUID())} variant="outline">Randomize seed</Button>
+              <Button disabled={balancedGenerating || !balancedSeed.trim()} onClick={() => {
+                if (!navigator.clipboard) {
+                  setBalancedError('Clipboard access is unavailable. Select the seed text and copy it manually.');
+                  return;
+                }
+                void navigator.clipboard.writeText(balancedSeed.trim()).then(
+                  () => setNotice({ tone: 'ready', text: 'Seed copied to clipboard.' }),
+                  () => setBalancedError('Clipboard access failed. Select the seed text and copy it manually.'),
+                );
+              }} variant="outline">Copy seed</Button>
+            </div>
             <label>
               Starter base
               <select disabled={balancedGenerating} onChange={(event) => setBalancedTemplateId(event.target.value)} value={balancedTemplateId}>
@@ -1759,6 +1772,11 @@ export function EditorApp() {
 
               {selectedBalancedCandidate && (
                 <section className="balanced-gate-list">
+                  <p className="balanced-candidate-identity">
+                    Selected candidate seed: <code>{selectedBalancedCandidate.result.identity.seed}</code>
+                    {' · '}{selectedBalancedCandidate.result.identity.topology}
+                    {' · '}{BALANCED_GENERATOR_VERSION}
+                  </p>
                   {selectedBalancedCandidate.analysis.terrain.gates.map((gate) => (
                     <div className={gate.passed ? 'pass' : 'fail'} key={gate.code}>
                       {gate.passed ? <CheckCircle2 /> : <AlertTriangle />}

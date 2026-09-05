@@ -16,7 +16,10 @@ seed, source revision, package checksum, and side-swapped playtest record are li
 
 The feature branch currently exposes a **Balanced** action in the Forge header:
 
-1. Enter a map name and reproducible text seed.
+1. Enter a map name and reproducible text seed. **Randomize seed** creates a new
+   seed; **Copy seed** copies the trimmed input for sharing. Normal text selection
+   and paste also work. Candidate results retain their original seed, displayed
+   above the gate report, even if you change the input before generating again.
 2. Choose a base template, original terrain texture theme, and relief.
 3. Select **Generate three** to build the open-field, three-route, and ring-center
    candidates from the same seed. Progress appears between candidates; **Stop and
