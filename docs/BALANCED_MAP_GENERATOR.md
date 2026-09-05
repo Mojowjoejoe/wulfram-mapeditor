@@ -20,8 +20,9 @@ The feature branch currently exposes a **Balanced** action in the Forge header:
 2. Choose a base template, original terrain texture theme, and relief.
 3. Select **Generate three** to build the open-field, three-route, and ring-center
    candidates from the same seed.
-4. Compare slope-proxy coverage, separated route counts, map errors, and the full
-   gate list. Failed candidates remain visible but cannot be applied.
+4. Compare slope-proxy coverage, connected cleared terrain, reachable high ground,
+   separated route counts, map errors, and the full gate list. Failed candidates
+   remain visible but cannot be applied.
 5. Select a passing candidate and choose **Apply passing candidate**. The prior map
    becomes one undoable history entry; canceling the dialog changes nothing.
 
@@ -32,9 +33,9 @@ validation; infrastructure errors cannot be hidden by the balance score.
 
 Current implementation limits are deliberate: the dialog does not yet render three
 independent 3D thumbnails, the center objective is an analysis region rather than a
-placed gameplay entity, route
-clearance still uses grid separation rather than verified vehicle footprints, and
-no generated map has yet passed live side-swapped playtesting.
+placed gameplay entity, route clearance uses a conservative grid-erosion proxy
+rather than verified vehicle footprints, and no generated map has yet passed live
+side-swapped playtesting.
 
 ## Versioned first-release profile
 
@@ -50,6 +51,10 @@ Profile ID: `strict-rotational-v1`
 | Provisional minimum slope-passable fraction | 0.58 | Corpus P25; must not replace route gates |
 | Base separation reference | 0.46 of world diagonal | Corpus median team-centroid separation |
 | Minimum standard routes | 2 | First-release design requirement |
+| Minimum route-clearance radius | 1 terrain vertex | Reject a route whose surrounding slope-passable cells are not clear |
+| Maximum base-anchor snap | 3 terrain vertices | Prevent a blocked or invalid base from snapping across the map |
+| Minimum reachable cleared terrain | 0.70 | Reject substantial disconnected playable regions |
+| Minimum reachable high ground | 0.50 | Reject isolated strategic elevation while the live movement model remains provisional |
 
 Slope/passability values are explicitly configurable and provisional until the game
 team verifies the ground-movement contract. Forge’s current 22-degree value is an
@@ -135,9 +140,10 @@ neighbor edges. An edge is traversable when:
 Edge cost is its three-dimensional segment length. Additional texture or combat costs
 must remain disabled unless an authoritative rule supports them.
 
-Base anchors are mapped to their nearest traversable grid vertices. Center/objective
-targets are regions, not a single fragile vertex. Paths use deterministic shortest
-path search with stable tie-breaking.
+Base anchors must be finite, in bounds, rotationally paired, and resolve to a cleared
+grid vertex within three terrain vertices. Center/objective targets are regions, not
+a single fragile vertex, and their anchors must form a closed rotational set. Paths
+use deterministic shortest-path search with stable tie-breaking.
 
 A second route counts as meaningfully distinct only when it clears the profile’s
 separation corridor from the first route for the required portion of its length.
@@ -155,10 +161,11 @@ A candidate is rejected when any of these are true:
 6. Either team cannot reach a required objective or the paired base conflict region.
 7. A paired route exists for only one team.
 8. A standard topology has fewer than two meaningfully distinct strategic routes.
-9. Traversable connected coverage is below the configured hard floor.
-10. Neutral strategic placement is not centered or rotationally paired.
-11. Canonical source or original-package round trip changes the candidate semantically.
-12. Repeating the complete generation identity changes deterministic content.
+9. Reachable cleared terrain is below the configured hard floor.
+10. Reachable high ground is below the configured hard floor.
+11. Neutral strategic placement is not centered or rotationally paired.
+12. Canonical source or original-package round trip changes the candidate semantically.
+13. Repeating the complete generation identity changes deterministic content.
 
 Hard gates are evaluated before candidate ranking. No aggregate score can compensate
 for a failed hard gate.
@@ -198,7 +205,10 @@ layout.
 
 - Unit tests for seed normalization, PRNG stability, masks, transforms, and gates
 - Hand-verifiable traversal fixtures
-- Adversarial seed corpus
+- Adversarial malformed-shape, anchor, one-lane-choke, disconnected-objective, and
+  isolated-high-ground fixtures
+- A seed-family corpus in which individual topology candidates may be rejected but
+  every retained family has at least one passing choice
 - Repeated-generation byte comparison
 - 47-map compatibility round trips
 - Base-template placement regression coverage

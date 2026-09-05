@@ -80,6 +80,6 @@ node .\tools\smoke-balanced-ui.mjs .\artifacts\balanced-generator-desktop.png
 ```
 
 The probe reloads the app, opens the generator, creates three candidates, requires
-at least one passing candidate and all nine report gates, applies the selected
+at least one passing candidate and all eleven report gates, applies the selected
 candidate, and writes before/after screenshots. It is an interaction smoke test;
 it does not replace save/export/reload testing or live map playtesting.

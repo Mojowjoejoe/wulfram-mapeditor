@@ -14,7 +14,11 @@ export interface BalancedTraversalProfile {
   targetTraversableFraction: number;
   minimumRouteCount: number;
   routeSeparationVertices: number;
+  minimumRouteClearanceVertices: number;
+  maximumAnchorSnapVertices: number;
   objectiveRadiusVertices: number;
+  minimumReachableFraction: number;
+  minimumReachableHighGroundFraction: number;
   pairedCostTolerance: number;
 }
 
@@ -44,6 +48,8 @@ export interface BalancedTerrainAnalysis {
     rotationalMismatches: number;
     traversableVertices: number;
     traversableFraction: number;
+    clearanceTraversableVertices: number;
+    clearanceTraversableFraction: number;
     highGroundThreshold: number | null;
     pairedObjectiveCostDelta: number | null;
     pairedObjectiveCostDeltaRatio: number | null;
@@ -76,10 +82,15 @@ export const DEFAULT_BALANCED_TRAVERSAL_PROFILE: BalancedTraversalProfile = {
   targetTraversableFraction: 0.7,
   minimumRouteCount: 2,
   routeSeparationVertices: 2,
+  minimumRouteClearanceVertices: 1,
+  maximumAnchorSnapVertices: 3,
   objectiveRadiusVertices: 2,
+  minimumReachableFraction: 0.7,
+  minimumReachableHighGroundFraction: 0.5,
   pairedCostTolerance: 1e-9,
 };
 
+const MAX_ANALYSIS_DIMENSION = 513;
 const ENTITY_PLANAR_TOLERANCE = 1e-6;
 const ENTITY_HEIGHT_TOLERANCE = 1;
 const ENTITY_ROTATION_TOLERANCE = 1e-6;
@@ -276,8 +287,14 @@ function validateProfile(profile: BalancedTraversalProfile): void {
   }
   if (!Number.isInteger(profile.minimumRouteCount) || profile.minimumRouteCount < 1
     || !Number.isInteger(profile.routeSeparationVertices) || profile.routeSeparationVertices < 0
+    || !Number.isInteger(profile.minimumRouteClearanceVertices) || profile.minimumRouteClearanceVertices < 0
+    || !Number.isInteger(profile.maximumAnchorSnapVertices) || profile.maximumAnchorSnapVertices < 0
     || !Number.isInteger(profile.objectiveRadiusVertices) || profile.objectiveRadiusVertices < 0) {
-    throw new Error('Route counts, separation, and objective radius must be non-negative integers.');
+    throw new Error('Route counts, separation, clearance, anchor snap, and objective radius must be non-negative integers.');
+  }
+  if (profile.minimumReachableFraction < 0 || profile.minimumReachableFraction > 1
+    || profile.minimumReachableHighGroundFraction < 0 || profile.minimumReachableHighGroundFraction > 1) {
+    throw new Error('Reachable fractions must be from 0 through 1.');
   }
   if (profile.pairedCostTolerance < 0) throw new Error('pairedCostTolerance cannot be negative.');
 }
@@ -292,26 +309,102 @@ function quantile(values: number[], probability: number): number | null {
   return sorted[lower] + (sorted[upper] - sorted[lower]) * (position - lower);
 }
 
+function strategicHighGroundThreshold(values: number[]): number | null {
+  if (!values.length) return null;
+  let lower = Number.POSITIVE_INFINITY;
+  let upper = Number.NEGATIVE_INFINITY;
+  for (const value of values) {
+    lower = Math.min(lower, value);
+    upper = Math.max(upper, value);
+  }
+  const upperQuartile = quantile(values, 0.75)!;
+  return upper > lower ? Math.max(upperQuartile, lower + (upper - lower) * 0.1) : upper;
+}
+
 function nearestPassableVertex(
   terrain: TerrainData,
   passable: Uint8Array,
   anchor: [number, number],
+  maximumSnapVertices: number,
 ): number | undefined {
+  if (!passable.length
+    || !Number.isFinite(anchor?.[0]) || !Number.isFinite(anchor?.[1])
+    || anchor[0] < 0 || anchor[0] > terrain.worldWidth
+    || anchor[1] < 0 || anchor[1] > terrain.worldHeight) return undefined;
   const stepX = terrain.worldWidth / (terrain.width - 1);
   const stepY = terrain.worldHeight / (terrain.height - 1);
+  const centerX = Math.round(anchor[0] / stepX);
+  const centerY = Math.round(anchor[1] / stepY);
   let bestIndex: number | undefined;
   let bestDistance = Number.POSITIVE_INFINITY;
-  for (let index = 0; index < passable.length; index += 1) {
-    if (!passable[index]) continue;
-    const x = index % terrain.width;
-    const y = Math.floor(index / terrain.width);
-    const distance = Math.hypot(x * stepX - anchor[0], y * stepY - anchor[1]);
-    if (distance < bestDistance || (distance === bestDistance && index < (bestIndex ?? Number.POSITIVE_INFINITY))) {
-      bestDistance = distance;
-      bestIndex = index;
+  for (let offsetY = -maximumSnapVertices; offsetY <= maximumSnapVertices; offsetY += 1) {
+    for (let offsetX = -maximumSnapVertices; offsetX <= maximumSnapVertices; offsetX += 1) {
+      if (Math.hypot(offsetX, offsetY) > maximumSnapVertices + 1e-9) continue;
+      const x = centerX + offsetX;
+      const y = centerY + offsetY;
+      if (x < 0 || x >= terrain.width || y < 0 || y >= terrain.height) continue;
+      const index = y * terrain.width + x;
+      if (!passable[index]) continue;
+      const distance = Math.hypot(x * stepX - anchor[0], y * stepY - anchor[1]);
+      if (distance < bestDistance || (distance === bestDistance && index < (bestIndex ?? Number.POSITIVE_INFINITY))) {
+        bestDistance = distance;
+        bestIndex = index;
+      }
     }
   }
   return bestIndex;
+}
+
+function clearancePassableMask(
+  passable: Uint8Array,
+  width: number,
+  height: number,
+  clearanceVertices: number,
+): Uint8Array {
+  if (clearanceVertices === 0) return passable.slice();
+  const cleared = new Uint8Array(passable.length);
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const index = y * width + x;
+      if (!passable[index]) continue;
+      let hasClearance = true;
+      for (let offsetY = -clearanceVertices; offsetY <= clearanceVertices && hasClearance; offsetY += 1) {
+        for (let offsetX = -clearanceVertices; offsetX <= clearanceVertices; offsetX += 1) {
+          if (Math.hypot(offsetX, offsetY) > clearanceVertices + 1e-9) continue;
+          const candidateX = x + offsetX;
+          const candidateY = y + offsetY;
+          if (candidateX < 0 || candidateX >= width || candidateY < 0 || candidateY >= height
+            || !passable[candidateY * width + candidateX]) {
+            hasClearance = false;
+            break;
+          }
+        }
+      }
+      if (hasClearance) cleared[index] = 1;
+    }
+  }
+  return cleared;
+}
+
+function validWorldAnchor(terrain: TerrainData, anchor: [number, number] | undefined): boolean {
+  return Boolean(anchor
+    && Number.isFinite(anchor[0]) && Number.isFinite(anchor[1])
+    && anchor[0] >= 0 && anchor[0] <= terrain.worldWidth
+    && anchor[1] >= 0 && anchor[1] <= terrain.worldHeight);
+}
+
+function rotationalAnchorsClose(
+  terrain: TerrainData,
+  anchors: Array<[number, number]>,
+  tolerance = 1e-6,
+): boolean {
+  return anchors.length > 0 && anchors.every((anchor) => validWorldAnchor(terrain, anchor)
+    && anchors.some((candidate) => (
+      Math.hypot(
+        candidate[0] - (terrain.worldWidth - anchor[0]),
+        candidate[1] - (terrain.worldHeight - anchor[1]),
+      ) <= tolerance
+    )));
 }
 
 function targetVertices(
@@ -466,7 +559,7 @@ function analyzeTeam(
   highGroundThreshold: number | null,
   profile: BalancedTraversalProfile,
 ): TeamTraversalMetrics {
-  const source = nearestPassableVertex(terrain, passable, anchor);
+  const source = nearestPassableVertex(terrain, passable, anchor, profile.maximumAnchorSnapVertices);
   if (source === undefined) {
     return {
       anchor,
@@ -518,16 +611,25 @@ export function analyzeBalancedTerrain(
 ): BalancedTerrainAnalysis {
   const profile = { ...DEFAULT_BALANCED_TRAVERSAL_PROFILE, ...overrides };
   validateProfile(profile);
-  const expectedVertices = terrain.width * terrain.height;
-  const shapeValid = terrain.width >= 2
+  const dimensionsValid = Number.isInteger(terrain.width)
+    && Number.isInteger(terrain.height)
+    && terrain.width >= 2
     && terrain.height >= 2
+    && terrain.width <= MAX_ANALYSIS_DIMENSION
+    && terrain.height <= MAX_ANALYSIS_DIMENSION;
+  const expectedVertices = dimensionsValid ? terrain.width * terrain.height : 0;
+  const shapeValid = dimensionsValid
+    && Number.isFinite(terrain.worldWidth)
+    && Number.isFinite(terrain.worldHeight)
     && terrain.worldWidth > 0
     && terrain.worldHeight > 0
+    && Array.isArray(terrain.heights)
+    && Array.isArray(terrain.textureIds)
     && terrain.heights.length === expectedVertices
     && terrain.textureIds.length === expectedVertices;
-  const finiteVertices = terrain.heights.filter(Number.isFinite).length;
-  const rotationalMismatches = shapeValid ? rotationalTerrainMismatches(terrain, 1e-9) : expectedVertices;
-  const passable = new Uint8Array(Math.max(0, expectedVertices));
+  const finiteVertices = shapeValid ? terrain.heights.filter(Number.isFinite).length : 0;
+  const rotationalMismatches = shapeValid ? rotationalTerrainMismatches(terrain, 1e-9) : Math.max(1, expectedVertices);
+  const passable = new Uint8Array(expectedVertices);
   if (shapeValid) {
     const stepX = terrain.worldWidth / (terrain.width - 1);
     const stepY = terrain.worldHeight / (terrain.height - 1);
@@ -541,16 +643,53 @@ export function analyzeBalancedTerrain(
   }
   const traversableVertices = passable.reduce((total, value) => total + value, 0);
   const traversableFraction = traversableVertices / Math.max(1, expectedVertices);
-  const highGroundThreshold = quantile(
-    terrain.heights.filter((height, index) => Number.isFinite(height) && passable[index]),
-    0.75,
-  );
-  const objectives = shapeValid
-    ? targetVertices(terrain, passable, objectiveAnchors, profile.objectiveRadiusVertices)
+  const clearancePassable = shapeValid
+    ? clearancePassableMask(
+        passable,
+        terrain.width,
+        terrain.height,
+        profile.minimumRouteClearanceVertices,
+      )
+    : passable;
+  const clearanceTraversableVertices = clearancePassable.reduce((total, value) => total + value, 0);
+  const clearanceTraversableFraction = clearanceTraversableVertices / Math.max(1, expectedVertices);
+  const highGroundThreshold = shapeValid ? strategicHighGroundThreshold(
+    terrain.heights.filter((height, index) => Number.isFinite(height) && clearancePassable[index]),
+  ) : null;
+  const baseAnchorsValid = shapeValid
+    && baseAnchors.length === 2
+    && baseAnchors.every((anchor) => validWorldAnchor(terrain, anchor))
+    && Math.hypot(
+      baseAnchors[1][0] - (terrain.worldWidth - baseAnchors[0][0]),
+      baseAnchors[1][1] - (terrain.worldHeight - baseAnchors[0][1]),
+    ) <= 1e-6
+    && Math.hypot(
+      baseAnchors[1][0] - baseAnchors[0][0],
+      baseAnchors[1][1] - baseAnchors[0][1],
+    ) > 1e-6;
+  const objectiveAnchorsValid = shapeValid && rotationalAnchorsClose(terrain, objectiveAnchors);
+  const objectives = objectiveAnchorsValid
+    ? targetVertices(terrain, clearancePassable, objectiveAnchors, profile.objectiveRadiusVertices)
     : new Set<number>();
   const teams: [TeamTraversalMetrics, TeamTraversalMetrics] = [
-    analyzeTeam(terrain, passable, traversableVertices, baseAnchors[0], objectives, highGroundThreshold, profile),
-    analyzeTeam(terrain, passable, traversableVertices, baseAnchors[1], objectives, highGroundThreshold, profile),
+    analyzeTeam(
+      terrain,
+      clearancePassable,
+      clearanceTraversableVertices,
+      baseAnchors[0],
+      objectives,
+      highGroundThreshold,
+      profile,
+    ),
+    analyzeTeam(
+      terrain,
+      clearancePassable,
+      clearanceTraversableVertices,
+      baseAnchors[1],
+      objectives,
+      highGroundThreshold,
+      profile,
+    ),
   ];
   const costs = teams.map((team) => team.objectiveCost);
   const pairedObjectiveCostDelta = costs.every((cost) => cost !== null)
@@ -581,22 +720,35 @@ export function analyzeBalancedTerrain(
     },
     {
       code: 'base-anchors',
-      passed: teams.every((team) => team.anchorVertex !== null),
-      message: teams.every((team) => team.anchorVertex !== null)
-        ? 'Both base anchors resolve to traversable vertices.'
-        : 'At least one base anchor has no traversable vertex.',
+      passed: baseAnchorsValid && teams.every((team) => team.anchorVertex !== null),
+      message: baseAnchorsValid && teams.every((team) => team.anchorVertex !== null)
+        ? 'Both rotationally paired base anchors resolve within the configured traversable snap radius.'
+        : 'Base anchors must be finite, in bounds, rotationally paired, and close to traversable terrain.',
     },
     {
       code: 'objectives',
-      passed: objectives.size > 0 && teams.every((team) => team.objectiveCost !== null),
-      message: objectives.size > 0 && teams.every((team) => team.objectiveCost !== null)
-        ? 'Both teams can reach the required objective region.'
-        : 'The objective region is missing or unreachable for at least one team.',
+      passed: objectiveAnchorsValid && objectives.size > 0 && teams.every((team) => team.objectiveCost !== null),
+      message: objectiveAnchorsValid && objectives.size > 0 && teams.every((team) => team.objectiveCost !== null)
+        ? 'Both teams can reach the rotationally paired objective region.'
+        : 'Objective anchors must be finite, in bounds, rotationally paired, and reachable for both teams.',
     },
     {
       code: 'route-count',
       passed: teams.every((team) => team.routeCount >= profile.minimumRouteCount),
-      message: `Detected ${teams[0].routeCount}/${teams[1].routeCount} separated team routes; minimum ${profile.minimumRouteCount} each.`,
+      message: `Detected ${teams[0].routeCount}/${teams[1].routeCount} separated team routes after a ${profile.minimumRouteClearanceVertices}-vertex clearance proxy; minimum ${profile.minimumRouteCount} each.`,
+    },
+    {
+      code: 'connected-playable-area',
+      passed: teams.every((team) => team.reachableFractionOfTraversable >= profile.minimumReachableFraction),
+      message: `Reachable cleared terrain is ${(teams[0].reachableFractionOfTraversable * 100).toFixed(1)}%/${(teams[1].reachableFractionOfTraversable * 100).toFixed(1)}%; minimum ${(profile.minimumReachableFraction * 100).toFixed(1)}% each.`,
+    },
+    {
+      code: 'high-ground-access',
+      passed: highGroundThreshold !== null
+        && teams.every((team) => (
+          team.reachableHighGroundFraction >= profile.minimumReachableHighGroundFraction
+        )),
+      message: `Reachable cleared high ground is ${(teams[0].reachableHighGroundFraction * 100).toFixed(1)}%/${(teams[1].reachableHighGroundFraction * 100).toFixed(1)}%; minimum ${(profile.minimumReachableHighGroundFraction * 100).toFixed(1)}% each.`,
     },
     {
       code: 'paired-objective-cost',
@@ -617,6 +769,8 @@ export function analyzeBalancedTerrain(
       rotationalMismatches,
       traversableVertices,
       traversableFraction,
+      clearanceTraversableVertices,
+      clearanceTraversableFraction,
       highGroundThreshold,
       pairedObjectiveCostDelta,
       pairedObjectiveCostDeltaRatio,

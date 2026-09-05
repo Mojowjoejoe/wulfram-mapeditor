@@ -1680,7 +1680,7 @@ export function EditorApp() {
 
           <div className="balanced-profile-note">
             <strong>{BALANCED_GENERATOR_VERSION}</strong>
-            <span>129 × 129 · 5600 × 5600 world · 22° slope proxy · 58% minimum coverage · 2 routes per team</span>
+            <span>129 × 129 · 5600 × 5600 world · 22° slope proxy · 58% raw coverage · 1-vertex clearance · 2 routes per team</span>
           </div>
 
           {balancedError && <p className="balanced-generator-error"><AlertTriangle />{balancedError}</p>}
@@ -1703,6 +1703,8 @@ export function EditorApp() {
                       <small>{topology.description}</small>
                       <dl>
                         <div><dt>Coverage</dt><dd>{(candidate.analysis.terrain.metrics.traversableFraction * 100).toFixed(1)}%</dd></div>
+                        <div><dt>Connected</dt><dd>{(Math.min(...candidate.analysis.terrain.metrics.teams.map((item) => item.reachableFractionOfTraversable)) * 100).toFixed(1)}%</dd></div>
+                        <div><dt>High ground</dt><dd>{(Math.min(...candidate.analysis.terrain.metrics.teams.map((item) => item.reachableHighGroundFraction)) * 100).toFixed(1)}%</dd></div>
                         <div><dt>Routes</dt><dd>{candidate.analysis.terrain.metrics.teams.map((item) => item.routeCount).join(' / ')}</dd></div>
                         <div><dt>Map errors</dt><dd>{candidate.analysis.projectErrorCount}</dd></div>
                       </dl>

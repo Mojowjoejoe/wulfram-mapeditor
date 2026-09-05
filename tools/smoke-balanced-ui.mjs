@@ -86,7 +86,7 @@ const result = await evaluate(`(() => {
 })()`);
 
 if (result.candidateCount !== 3 || result.passingCount < 1 || result.selectedCount !== 1
-  || result.applyDisabled !== false || result.gateCount !== 9) {
+  || result.applyDisabled !== false || result.gateCount !== 11) {
   throw new Error(`Balanced dialog smoke check failed: ${JSON.stringify(result)}`);
 }
 if (runtimeErrors.length) throw new Error(`Browser runtime errors: ${runtimeErrors.join(' | ')}`);

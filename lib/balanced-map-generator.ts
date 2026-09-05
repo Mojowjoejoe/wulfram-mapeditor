@@ -193,6 +193,16 @@ function smoothGrid(source: number[], size: number): number[] {
   return output;
 }
 
+function numericRange(values: number[]): [number, number] {
+  let minimum = Number.POSITIVE_INFINITY;
+  let maximum = Number.NEGATIVE_INFINITY;
+  for (const value of values) {
+    minimum = Math.min(minimum, value);
+    maximum = Math.max(maximum, value);
+  }
+  return [minimum, maximum];
+}
+
 function assertTopology(value: string): asserts value is BalancedMapTopology {
   if (value !== 'open-field' && value !== 'three-route' && value !== 'ring-center') {
     throw new Error(`Unknown balanced-map topology: ${value}`);
@@ -242,8 +252,7 @@ export function generateBalancedTerrain(options: BalancedTerrainOptions): Balanc
     return baseHeight + centered * relief;
   });
   for (let pass = 0; pass < 5; pass += 1) shapedHeights = smoothGrid(shapedHeights, size);
-  const smoothedMinimum = Math.min(...shapedHeights);
-  const smoothedMaximum = Math.max(...shapedHeights);
+  const [smoothedMinimum, smoothedMaximum] = numericRange(shapedHeights);
   const smoothedRange = Math.max(1e-9, smoothedMaximum - smoothedMinimum);
   shapedHeights = shapedHeights.map((height) => (
     baseHeight + ((height - smoothedMinimum) / smoothedRange - 0.5) * relief

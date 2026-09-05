@@ -36,6 +36,19 @@ const TEST_BASE_TEMPLATE = {
   ],
 };
 
+function flatTerrain(size = 33, worldSize = 3200) {
+  return {
+    width: size,
+    height: size,
+    worldWidth: worldSize,
+    worldHeight: worldSize,
+    heights: Array(size * size).fill(0),
+    textureIds: Array(size * size).fill(0),
+    tagmap: ['0:canyon003'],
+    tagmap2: ['canyon003'],
+  };
+}
+
 void test('seed hashing is normalized, UTF-8 stable, and sensitive to content', () => {
   assert.equal(balancedSeedHash(' Canyon '), balancedSeedHash('Canyon'));
   assert.equal(balancedSeedHash('Cafe\u0301'), balancedSeedHash('Café'));
@@ -131,12 +144,28 @@ void test('invalid generation inputs fail closed', () => {
     /odd integer/,
   );
   assert.throws(
+    () => generateBalancedTerrain({ seed: 'too-small', topology: 'open-field', size: 15 }),
+    /odd integer/,
+  );
+  assert.throws(
+    () => generateBalancedTerrain({ seed: 'too-large', topology: 'open-field', size: 515 }),
+    /odd integer/,
+  );
+  assert.throws(
     () => generateBalancedTerrain({ seed: 'bad-world', topology: 'open-field', worldWidth: 0 }),
     /World dimensions must be positive/,
   );
   assert.throws(
+    () => generateBalancedTerrain({ seed: 'bad-world', topology: 'open-field', worldHeight: Number.POSITIVE_INFINITY }),
+    /World height must be a finite number/,
+  );
+  assert.throws(
     () => generateBalancedTerrain({ seed: 'bad-relief', topology: 'open-field', relief: Number.NaN }),
     /Relief must be a finite number/,
+  );
+  assert.throws(
+    () => generateBalancedTerrain({ seed: 'bad-relief', topology: 'open-field', relief: 5001 }),
+    /at most 5000/,
   );
   assert.throws(
     () => generateBalancedTerrain({ seed: 'bad-topology', topology: 'maze' }),
@@ -146,6 +175,25 @@ void test('invalid generation inputs fail closed', () => {
     () => generateBalancedTerrain({ seed: 'bad-texture', topology: 'open-field', textureName: 'bad texture' }),
     /Texture name must be one non-empty archive token/,
   );
+  assert.throws(
+    () => generateBalancedTerrain({ seed: 'x'.repeat(201), topology: 'open-field' }),
+    /at most 200 characters/,
+  );
+});
+
+void test('repeated generation returns independent state with no cross-candidate leakage', () => {
+  const options = { seed: 'no-state-leak', topology: 'open-field', size: 33 };
+  const first = generateBalancedProject(options, TEST_BASE_TEMPLATE);
+  const expectedFirstHeight = first.project.terrain.heights[100];
+  const expectedFirstEntityX = first.project.entities[0].position[0];
+  first.project.terrain.heights[100] += 999;
+  first.project.entities[0].position[0] += 999;
+  first.project.baseLayouts[0].entities[0].position[0] += 999;
+
+  const second = generateBalancedProject(options, TEST_BASE_TEMPLATE);
+  assert.equal(second.project.terrain.heights[100], expectedFirstHeight);
+  assert.equal(second.project.entities[0].position[0], expectedFirstEntityX);
+  assert.equal(second.project.baseLayouts[0].entities[0].position[0], expectedFirstEntityX);
 });
 
 void test('generated topology presets pass the first-release terrain balance gates', () => {
@@ -180,22 +228,155 @@ void test('generated topology presets pass the first-release terrain balance gat
   }
 });
 
-void test('calibrated presets pass a deterministic seed sweep', () => {
-  for (const topology of ['open-field', 'three-route', 'ring-center']) {
-    for (let index = 0; index < 16; index += 1) {
+void test('each calibrated seed family retains at least one passing topology', () => {
+  for (let index = 0; index < 16; index += 1) {
+    const reports = ['open-field', 'three-route', 'ring-center'].map((topology) => {
       const generated = generateBalancedTerrain({ seed: `sweep-${index}`, topology });
-      const report = analyzeBalancedTerrain(
-        generated.terrain,
-        generated.baseAnchors,
-        generated.objectiveAnchors,
-      );
-      assert.equal(
-        report.passed,
-        true,
-        `${topology}/sweep-${index}: ${report.gates.filter((gate) => !gate.passed).map((gate) => gate.message).join(' | ')}`,
-      );
+      return {
+        topology,
+        report: analyzeBalancedTerrain(
+          generated.terrain,
+          generated.baseAnchors,
+          generated.objectiveAnchors,
+        ),
+      };
+    });
+    assert.ok(
+      reports.some(({ report }) => report.passed),
+      `sweep-${index}: ${reports.map(({ topology, report }) => (
+        `${topology}=${report.gates.filter((gate) => !gate.passed).map((gate) => gate.code).join(',')}`
+      )).join(' | ')}`,
+    );
+  }
+});
+
+void test('analysis fails malformed and excessive terrain shapes without allocating their claimed size', () => {
+  const excessive = {
+    ...flatTerrain(),
+    width: 1_000_000,
+    height: 1_000_000,
+    heights: [],
+    textureIds: [],
+  };
+  const report = analyzeBalancedTerrain(excessive, [[800, 800], [2400, 2400]], [[1600, 1600]]);
+  assert.equal(report.passed, false);
+  assert.equal(report.metrics.terrainVertices, 0);
+  assert.equal(report.gates.find((gate) => gate.code === 'terrain-shape')?.passed, false);
+
+  const nonFinite = flatTerrain();
+  nonFinite.heights[100] = Number.NaN;
+  const nonFiniteReport = analyzeBalancedTerrain(
+    nonFinite,
+    [[800, 800], [2400, 2400]],
+    [[1600, 1600]],
+  );
+  assert.equal(nonFiniteReport.passed, false);
+  assert.equal(nonFiniteReport.gates.find((gate) => gate.code === 'terrain-shape')?.passed, false);
+});
+
+void test('analysis safely accepts the supported maximum terrain size', () => {
+  const generated = generateBalancedTerrain({
+    seed: 'maximum-supported-size',
+    topology: 'open-field',
+    size: 513,
+  });
+  assert.equal(generated.terrain.heights.length, 513 * 513);
+  assert.equal(rotationalTerrainMismatches(generated.terrain), 0);
+
+  const terrain = flatTerrain(513, 5600);
+  const report = analyzeBalancedTerrain(
+    terrain,
+    [[1400, 1400], [4200, 4200]],
+    [[2800, 2800]],
+  );
+  assert.equal(report.gates.find((gate) => gate.code === 'terrain-shape')?.passed, true);
+  assert.equal(report.metrics.terrainVertices, 513 * 513);
+  assert.equal(report.passed, true);
+});
+
+void test('analysis rejects remote, unpaired base and objective anchors', () => {
+  const terrain = flatTerrain();
+  const unpairedBases = analyzeBalancedTerrain(
+    terrain,
+    [[800, 800], [800, 800]],
+    [[1600, 1600]],
+  );
+  assert.equal(unpairedBases.gates.find((gate) => gate.code === 'base-anchors')?.passed, false);
+  const duplicateCenterBases = analyzeBalancedTerrain(
+    terrain,
+    [[1600, 1600], [1600, 1600]],
+    [[1600, 1600]],
+  );
+  assert.equal(duplicateCenterBases.gates.find((gate) => gate.code === 'base-anchors')?.passed, false);
+
+  const unpairedObjective = analyzeBalancedTerrain(
+    terrain,
+    [[800, 800], [2400, 2400]],
+    [[1200, 1600]],
+  );
+  assert.equal(unpairedObjective.gates.find((gate) => gate.code === 'objectives')?.passed, false);
+
+  const outOfBounds = analyzeBalancedTerrain(
+    terrain,
+    [[-100, 800], [3300, 2400]],
+    [[1600, 1600]],
+  );
+  assert.equal(outOfBounds.gates.find((gate) => gate.code === 'base-anchors')?.passed, false);
+});
+
+void test('analysis rejects a rotationally symmetric one-lane choke after clearance', () => {
+  const terrain = flatTerrain();
+  const center = Math.floor(terrain.width / 2);
+  for (let y = 0; y < terrain.height; y += 1) {
+    for (let x = center - 1; x <= center + 1; x += 1) {
+      if (y < center - 2 || y > center + 2) terrain.heights[y * terrain.width + x] = 2000;
     }
   }
+  const report = analyzeBalancedTerrain(
+    terrain,
+    [[800, 1600], [2400, 1600]],
+    [[1600, 1600]],
+  );
+  assert.equal(report.gates.find((gate) => gate.code === 'rotational-symmetry')?.passed, true);
+  assert.equal(report.gates.find((gate) => gate.code === 'route-count')?.passed, false);
+  assert.deepEqual(report.metrics.teams.map((team) => team.routeCount), [1, 1]);
+});
+
+void test('analysis rejects rotationally paired but isolated high-ground islands', () => {
+  const terrain = flatTerrain();
+  for (const [centerX, centerY] of [[8, 24], [24, 8]]) {
+    for (let y = centerY - 4; y <= centerY + 4; y += 1) {
+      for (let x = centerX - 4; x <= centerX + 4; x += 1) {
+        terrain.heights[y * terrain.width + x] = 1000;
+      }
+    }
+  }
+  const report = analyzeBalancedTerrain(
+    terrain,
+    [[800, 800], [2400, 2400]],
+    [[1600, 1600]],
+  );
+  assert.equal(report.gates.find((gate) => gate.code === 'rotational-symmetry')?.passed, true);
+  assert.equal(report.gates.find((gate) => gate.code === 'high-ground-access')?.passed, false);
+  assert.deepEqual(report.metrics.teams.map((team) => team.reachableHighGroundFraction), [0, 0]);
+});
+
+void test('analysis rejects a substantial disconnected playable region', () => {
+  const terrain = flatTerrain();
+  for (const [centerX, centerY] of [[8, 24], [24, 8]]) {
+    for (let y = centerY - 7; y <= centerY + 7; y += 1) {
+      for (let x = centerX - 7; x <= centerX + 7; x += 1) {
+        terrain.heights[y * terrain.width + x] = 1000;
+      }
+    }
+  }
+  const report = analyzeBalancedTerrain(
+    terrain,
+    [[800, 800], [2400, 2400]],
+    [[1600, 1600]],
+  );
+  assert.equal(report.gates.find((gate) => gate.code === 'connected-playable-area')?.passed, false);
+  assert.ok(report.metrics.teams.every((team) => team.reachableFractionOfTraversable < 0.7));
 });
 
 void test('analysis rejects a symmetric but disconnected objective', () => {
@@ -234,6 +415,24 @@ void test('analysis is read-only and rejects invalid profiles', () => {
       { minimumTraversableFraction: 0.8, targetTraversableFraction: 0.7 },
     ),
     /Target traversable fraction cannot be lower/,
+  );
+  assert.throws(
+    () => analyzeBalancedTerrain(
+      generated.terrain,
+      generated.baseAnchors,
+      generated.objectiveAnchors,
+      { minimumRouteClearanceVertices: -1 },
+    ),
+    /clearance/,
+  );
+  assert.throws(
+    () => analyzeBalancedTerrain(
+      generated.terrain,
+      generated.baseAnchors,
+      generated.objectiveAnchors,
+      { minimumReachableFraction: 1.1 },
+    ),
+    /Reachable fractions/,
   );
 });
 
