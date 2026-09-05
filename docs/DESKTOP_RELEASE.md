@@ -81,5 +81,15 @@ node .\tools\smoke-balanced-ui.mjs .\artifacts\balanced-generator-desktop.png
 
 The probe reloads the app, opens the generator, creates three candidates, requires
 at least one passing candidate and all eleven report gates, applies the selected
-candidate, and writes before/after screenshots. It is an interaction smoke test;
-it does not replace save/export/reload testing or live map playtesting.
+candidate, and writes before/after screenshots.
+
+Pass a new output directory as the optional second path argument to run the complete
+persistence journey. This mode deliberately clears only the debug profile's Forge
+autosave, then verifies apply, undo, redo, local save, reload restoration, game/editor
+ZIP export, package reopening, and UI re-import:
+
+```powershell
+node .\tools\smoke-balanced-ui.mjs .\artifacts\balanced-generator-desktop.png .\artifacts\persistence-smoke
+```
+
+The probe does not replace live map playtesting.
