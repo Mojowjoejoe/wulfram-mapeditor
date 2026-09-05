@@ -1,7 +1,9 @@
 import path from 'node:path';
 
 const SHA1_THUMBPRINT = /^[0-9A-F]{40}$/;
-const DEFAULT_TIMESTAMP_URL = 'https://timestamp.digicert.com';
+// DigiCert's documented SignTool RFC 3161 endpoint uses HTTP.
+// The timestamp response itself is cryptographically signed by the TSA.
+const DEFAULT_TIMESTAMP_URL = 'http://timestamp.digicert.com';
 
 function optionalText(value) {
   const trimmed = value?.trim();
