@@ -94,6 +94,12 @@ if (canceledProjectName !== originalProjectName) {
 }
 await evaluate("Array.from(document.querySelectorAll('.top-actions button')).find((button) => button.textContent.includes('Balanced'))?.click()");
 await waitFor("document.querySelector('.balanced-generator-dialog') !== null");
+await evaluate(`(() => {
+  const input = document.querySelector('.balanced-generator-form input');
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+  setter.call(input, 'Balanced UI Smoke');
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+})()`);
 const generationStartedAt = performance.now();
 await evaluate("Array.from(document.querySelectorAll('.balanced-generator-footer button')).find((button) => button.textContent.includes('Generate three'))?.click()");
 await waitFor("document.querySelectorAll('.balanced-candidate-grid > button').length === 3");
@@ -113,7 +119,6 @@ const result = await evaluate(`(() => {
     previewCount: document.querySelectorAll('.balanced-candidate-preview').length,
     accessiblePreviewCount: Array.from(document.querySelectorAll('.balanced-candidate-preview'))
       .filter((preview) => preview.getAttribute('aria-label')?.includes('three-dimensional terrain relief preview')).length,
-    cancelPreservedProject: canceledProjectName === originalProjectName,
     viewport: {
       width: innerWidth,
       height: innerHeight,
@@ -126,7 +131,7 @@ const result = await evaluate(`(() => {
 
 if (result.candidateCount !== 3 || result.passingCount < 1 || result.selectedCount !== 1
   || result.applyDisabled !== false || result.gateCount !== 11 || result.previewCount !== 3
-  || result.accessiblePreviewCount !== 3 || result.cancelPreservedProject !== true) {
+  || result.accessiblePreviewCount !== 3 || canceledProjectName !== originalProjectName) {
   throw new Error(`Balanced dialog smoke check failed: ${JSON.stringify(result)}`);
 }
 if (result.viewport.documentWidth > result.viewport.width
@@ -267,6 +272,7 @@ const performanceMetrics = await cdp('Performance.getMetrics');
 const metric = (name) => performanceMetrics.metrics.find((item) => item.name === name)?.value;
 console.log(JSON.stringify({
   ...result,
+  cancelPreservedProject: canceledProjectName === originalProjectName,
   generationDurationMs,
   jsHeapUsedBytes: metric('JSHeapUsedSize'),
   jsHeapTotalBytes: metric('JSHeapTotalSize'),
