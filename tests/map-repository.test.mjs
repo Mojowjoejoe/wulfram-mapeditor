@@ -56,6 +56,22 @@ function git(repository, ...args) {
   return execFileSync('git', ['-C', repository, ...args], { encoding: 'utf8' }).trim();
 }
 
+function runMapsCli(repository, output, ...args) {
+  return execFileSync(
+    process.execPath,
+    [
+      '--experimental-strip-types',
+      path.resolve(import.meta.dirname, '..', 'tools', 'maps-cli.mjs'),
+      ...args,
+      '--repo',
+      repository,
+      '--out',
+      output,
+    ],
+    { encoding: 'utf8' },
+  );
+}
+
 function realRepository(context) {
   const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'wulfram-map-git-test-'));
   const repository = path.join(temporary, 'checkout');
@@ -143,6 +159,43 @@ void test('repository source save, list, load, compile, and release bundle form 
     release.manifest.maps.map((map) => map.slug),
     ['git-diff-test'],
   );
+});
+
+void test('balanced-map CLI refuses main and writes a validated compiled candidate on a feature branch', (context) => {
+  const { repository } = realRepository(context);
+  const output = path.join(path.dirname(repository), 'compiled');
+  assert.throws(
+    () => runMapsCli(
+      repository,
+      output,
+      'generate',
+      'generated-cli-test',
+      'cli-seed',
+      'open-field',
+      'canyon003',
+      'curated-base-in-a-box',
+    ),
+    (error) => error.stderr?.includes('Create or switch to a maps/* feature branch'),
+  );
+  assert.equal(fs.existsSync(path.join(repository, 'maps', 'generated-cli-test')), false);
+
+  switchRepositoryBranch(repository, 'maps/generated-cli-test', true);
+  const stdout = runMapsCli(
+    repository,
+    output,
+    'generate',
+    'generated-cli-test',
+    'cli-seed',
+    'open-field',
+    'canyon003',
+    'curated-base-in-a-box',
+  );
+  assert.match(stdout, /Coverage: .* routes: 2\/2; entities: 30/);
+  const generated = loadRepositoryMap(repository, 'generated-cli-test');
+  assert.equal(generated.name, 'Generated Cli Test');
+  assert.equal(generated.baseLayouts[0].metadata['generator.seed'], 'cli-seed');
+  assert.equal(generated.baseLayouts[0].metadata['generator.reviewStatus'], 'offline-candidate');
+  assert.equal(fs.existsSync(path.join(output, 'generated-cli-test.zip')), true);
 });
 
 void test('repository map slugs cannot escape maps/', () => {

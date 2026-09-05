@@ -2,7 +2,10 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
+import { analyzeBalancedProject } from '../lib/balanced-map-analysis.ts';
+import { generateBalancedProject } from '../lib/balanced-map-generator.ts';
 import {
   MAP_REQUIRED_SOURCE_FILES,
   parseMapSourceFiles,
@@ -21,6 +24,7 @@ import {
   compileRepository,
   listRepositoryMaps,
   publishRepositoryMaps,
+  repositoryGitInfo,
   repositoryDiagnostics,
   resolveMapsRepository,
   runGit,
@@ -28,12 +32,15 @@ import {
   switchRepositoryBranch,
 } from './map-repository-lib.mjs';
 
+const EDITOR_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+
 function usage() {
   console.log(`Wulfram maps repository tools
 
 Usage:
   npm run maps:list
   npm run maps:import -- <source.zip|source-directory|project.json> [slug]
+  npm run maps:generate -- <slug> <seed> <open-field|three-route|ring-center> [texture] [template-id]
   npm run maps:seed-original -- [original-maps-directory]
   npm run maps:compile -- [slug ...|--all] [--out <directory>]
   npm run maps:doctor
@@ -45,6 +52,65 @@ Options:
   --repo <directory>  Override the sibling wulfram-maps checkout
   --out <directory>   Compilation output (default: <repo>/dist)
 `);
+}
+
+function titleFromSlug(slug) {
+  return slug
+    .split(/[-_]+/)
+    .filter(Boolean)
+    .map((word) => `${word[0].toUpperCase()}${word.slice(1)}`)
+    .join(' ');
+}
+
+async function generateBalancedRepositoryMap(repository, slug, seed, topology, textureName, templateId, output) {
+  const git = repositoryGitInfo(repository);
+  if (git.branch === git.defaultBranch) {
+    throw new Error('Create or switch to a maps/* feature branch before generating a repository map.');
+  }
+  if (!['open-field', 'three-route', 'ring-center'].includes(topology)) {
+    throw new Error('Topology must be open-field, three-route, or ring-center.');
+  }
+  const templates = JSON.parse(fs.readFileSync(path.join(EDITOR_ROOT, 'public', 'assets', 'base-templates.json'), 'utf8'));
+  const manifest = JSON.parse(fs.readFileSync(path.join(EDITOR_ROOT, 'public', 'assets', 'manifest.json'), 'utf8'));
+  const selectedTemplateId = templateId || 'curated-base-in-a-box';
+  const template = templates.templates.find((item) => item.id === selectedTemplateId);
+  if (!template) throw new Error(`Unknown base template: ${selectedTemplateId}`);
+  const result = generateBalancedProject({
+    name: titleFromSlug(slug),
+    seed,
+    topology,
+    textureName: textureName || 'canyon003',
+  }, template, manifest);
+  const analysis = analyzeBalancedProject(
+    result.project,
+    result.baseAnchors,
+    result.objectiveAnchors,
+  );
+  if (!analysis.passed) {
+    const failures = [
+      ...analysis.terrain.gates.filter((gate) => !gate.passed).map((gate) => gate.message),
+      ...(analysis.entityPairing.passed ? [] : [analysis.entityPairing.message]),
+      ...analysis.projectIssues.filter((issue) => issue.severity === 'error').map((issue) => issue.message),
+    ];
+    throw new Error(`Generated candidate failed: ${failures.join(' | ')}`);
+  }
+  const metadata = result.project.baseLayouts[0].metadata;
+  metadata['generator.sourceRevision'] = runGit(EDITOR_ROOT, ['rev-parse', 'HEAD']);
+  metadata['generator.reviewStatus'] = 'offline-candidate';
+  metadata['generator.analysis'] = JSON.stringify({
+    passed: analysis.passed,
+    profile: analysis.terrain.profile,
+    gates: analysis.terrain.gates,
+    metrics: analysis.terrain.metrics,
+    entityPairing: analysis.entityPairing,
+    projectErrorCount: analysis.projectErrorCount,
+    projectWarningCount: analysis.projectWarningCount,
+  });
+  saveRepositoryMap(repository, slug, result.project);
+  const [compiled] = await compileRepository(repository, [slug], output);
+  console.log(`${slug}: generated ${topology} candidate on ${git.branch}.`);
+  console.log(`Coverage: ${(analysis.terrain.metrics.traversableFraction * 100).toFixed(2)}%; routes: ${analysis.terrain.metrics.teams.map((team) => team.routeCount).join('/')}; entities: ${result.project.entities.length}.`);
+  console.log(`Compiled: ${path.relative(process.cwd(), compiled.output)} (${compiled.sha256}).`);
 }
 
 function takeOption(args, name) {
@@ -263,6 +329,22 @@ async function main() {
     if (!input || args.length > 1 || all)
       throw new Error('maps:import requires an input path and optional slug.');
     await importSource(repository, input, args[0]);
+    return;
+  }
+
+  if (command === 'generate') {
+    if (all || create || args.length < 3 || args.length > 5) {
+      throw new Error('maps:generate requires slug, seed, topology, and optional texture and template ID.');
+    }
+    await generateBalancedRepositoryMap(
+      repository,
+      args[0],
+      args[1],
+      args[2],
+      args[3],
+      args[4],
+      output,
+    );
     return;
   }
 

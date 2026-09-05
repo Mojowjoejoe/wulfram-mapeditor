@@ -21,6 +21,7 @@
     "verify:formats": "node --experimental-strip-types tools/verify-formats.mjs",
     "maps:list": "node --experimental-strip-types tools/maps-cli.mjs list",
     "maps:import": "node --experimental-strip-types tools/maps-cli.mjs import",
+    "maps:generate": "node --experimental-strip-types tools/maps-cli.mjs generate",
     "maps:seed-original": "node --experimental-strip-types tools/maps-cli.mjs seed-original",
     "maps:compile": "node --experimental-strip-types tools/maps-cli.mjs compile",
     "maps:doctor": "node --experimental-strip-types tools/maps-cli.mjs doctor",

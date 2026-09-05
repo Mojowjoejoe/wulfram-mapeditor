@@ -77,9 +77,16 @@ Some entity shape names referenced by the executable—heavy silo, shield, porta
 The reviewable source format is documented in [docs/MAP_SOURCE_FORMAT.md](docs/MAP_SOURCE_FORMAT.md). Compiled game ZIPs stay out of Git and are published from a clean `wulfram-maps` checkout:
 
 ```bash
+npm run maps:branch -- maps/forge-balance-alpha --create
+npm run maps:generate -- forge-balance-alpha forge-balance-alpha-v1 three-route canyon003 curated-base-in-a-box
 npm run maps:compile -- --all
 npm run maps:release -- v1.0.0
 ```
+
+`maps:generate` requires a non-`main` maps feature branch. It writes canonical
+source only after terrain, route, entity-pair, and normal Forge validation pass,
+then compiles the candidate and prints its SHA-256. It does not publish or label the
+candidate playtest-reviewed.
 
 The first imported-map artifact set is [wulfram-maps v0.1.0](https://github.com/blackwatergaming/wulfram-maps/releases/tag/v0.1.0), containing 47 individual packages, a collection archive, and SHA-256 checksums.
 
