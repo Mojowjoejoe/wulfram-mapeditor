@@ -100,10 +100,27 @@ await evaluate(`(() => {
   setter.call(input, 'Balanced UI Smoke');
   input.dispatchEvent(new Event('input', { bubbles: true }));
 })()`);
+await evaluate("Array.from(document.querySelectorAll('.balanced-seed-actions button')).find((button) => button.textContent.includes('Randomize seed'))?.click()");
+const randomizedSeed = await evaluate("document.querySelectorAll('.balanced-generator-form input')[1].value");
+if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(randomizedSeed)) {
+  throw new Error('Randomize seed did not produce a UUID seed.');
+}
+await evaluate(`(() => {
+  const input = document.querySelectorAll('.balanced-generator-form input')[1];
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, 'forge-001');
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+})()`);
 const generationStartedAt = performance.now();
 await evaluate("Array.from(document.querySelectorAll('.balanced-generator-footer button')).find((button) => button.textContent.includes('Generate three'))?.click()");
 await waitFor("document.querySelectorAll('.balanced-candidate-grid > button').length === 3");
 const generationDurationMs = performance.now() - generationStartedAt;
+await evaluate(`(() => {
+  const input = document.querySelectorAll('.balanced-generator-form input')[1];
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, 'next-generation-seed');
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+})()`);
+const retainedSeed = await evaluate("document.querySelector('.balanced-candidate-identity code')?.textContent");
+if (retainedSeed !== 'forge-001') throw new Error('Editing the input changed the displayed candidate seed.');
 
 const result = await evaluate(`(() => {
   const candidates = Array.from(document.querySelectorAll('.balanced-candidate-grid > button'));
