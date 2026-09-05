@@ -16,7 +16,8 @@ import {
   analyzeBalancedTerrain,
 } from '../lib/balanced-map-analysis.ts';
 import { createMapSourceFiles, parseMapSourceFiles } from '../lib/map-source.ts';
-import { createBlankProject, validateProject } from '../lib/wulfram.ts';
+import { createBlankProject, parseLand, validateProject } from '../lib/wulfram.ts';
+import { createMapArchive, readMapArchive } from '../lib/map-package.ts';
 
 const TEST_BASE_TEMPLATE = {
   id: 'balanced-test-base',
@@ -487,6 +488,40 @@ void test('map-level generator metadata is optional, string-only, and backward c
     }),
     /map\.json metadata\.generator\.seed must be text/,
   );
+});
+
+void test('rectangular worlds retain dimensions, pairing, and identity through source and ZIP reload', async () => {
+  for (const topology of ['open-field', 'three-route', 'ring-center']) {
+    const options = {
+      seed: 'forge-001', topology, size: 65, worldWidth: 6000, worldHeight: 5600,
+      updatedAt: '2000-01-01T00:00:00.000Z',
+    };
+    const generated = generateBalancedProject(options, TEST_BASE_TEMPLATE);
+    const files = createMapSourceFiles(generated.project);
+    const restored = parseMapSourceFiles(files);
+    assert.equal(restored.terrain.width, 65);
+    assert.equal(restored.terrain.height, 65);
+    assert.equal(restored.terrain.worldWidth, 6000);
+    assert.equal(restored.terrain.worldHeight, 5600);
+    assert.deepEqual(restored.metadata, generated.project.metadata);
+    assert.deepEqual(createMapSourceFiles(restored), files);
+    assert.deepEqual(createMapSourceFiles(generateBalancedProject(options, TEST_BASE_TEMPLATE).project), files);
+    const analysis = analyzeBalancedProject(restored, generated.baseAnchors, generated.objectiveAnchors);
+    assert.equal(analysis.passed, true, JSON.stringify(analysis));
+    assert.equal(rotationalTerrainMismatches(restored.terrain), 0);
+    const archive = await createMapArchive(restored);
+    assert.deepEqual(Buffer.from(await createMapArchive(restored)), Buffer.from(archive));
+    const entries = await readMapArchive(archive);
+    const land = parseLand(entries.find((entry) => entry.name.endsWith('/land')).text);
+    assert.equal(land.width, 65);
+    assert.equal(land.height, 65);
+    assert.equal(land.worldWidth, 6000);
+    assert.equal(land.worldHeight, 5600);
+    const projectEntry = entries.find((entry) => entry.name.endsWith('/wulfram-project.json'));
+    const archivedProject = JSON.parse(projectEntry.text);
+    assert.deepEqual(archivedProject.metadata, restored.metadata);
+    assert.deepEqual(createMapSourceFiles(archivedProject), files);
+  }
 });
 
 void test('project generation supplements a missing uplink as an exact pair', () => {
