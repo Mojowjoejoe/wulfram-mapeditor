@@ -20,6 +20,11 @@ The feature branch currently exposes a **Balanced** action in the Forge header:
    seed; **Copy seed** copies the trimmed input for sharing. Normal text selection
    and paste also work. Candidate results retain their original seed, displayed
    above the gate report, even if you change the input before generating again.
+   Grid size accepts odd vertex counts from 17 through 513. World width and height
+   can differ and must be positive. Defaults remain 129 vertices per side and
+   5,600 world units on each axis. The candidate report retains its generated
+   dimensions after inputs change. Custom dimensions still require passing gates;
+   a larger grid costs more time and memory, and a small world may not fit a base.
 2. Choose a base template, original terrain texture theme, and relief.
 3. Select **Generate three** to build the open-field, three-route, and ring-center
    candidates from the same seed. Progress appears between candidates; **Stop and

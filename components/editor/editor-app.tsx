@@ -47,6 +47,8 @@ import { TerrainViewport, type EditorMode, type ModelTransformMode, type StrokeP
 import { analyzeBalancedProject, type BalancedProjectAnalysis } from '@/lib/balanced-map-analysis';
 import {
   BALANCED_GENERATOR_VERSION,
+  BALANCED_DEFAULT_SIZE,
+  BALANCED_DEFAULT_WORLD_SIZE,
   BALANCED_STANDARD_RELIEF,
   generateBalancedProject,
   type BalancedMapTopology,
@@ -326,6 +328,9 @@ export function EditorApp() {
   const [balancedSeed, setBalancedSeed] = useState('forge-001');
   const [balancedName, setBalancedName] = useState('Generated balanced map');
   const [balancedRelief, setBalancedRelief] = useState(BALANCED_STANDARD_RELIEF);
+  const [balancedSize, setBalancedSize] = useState(BALANCED_DEFAULT_SIZE);
+  const [balancedWorldWidth, setBalancedWorldWidth] = useState(BALANCED_DEFAULT_WORLD_SIZE);
+  const [balancedWorldHeight, setBalancedWorldHeight] = useState(BALANCED_DEFAULT_WORLD_SIZE);
   const [balancedTextureName, setBalancedTextureName] = useState('canyon003');
   const [balancedTemplateId, setBalancedTemplateId] = useState('curated-base-in-a-box');
   const [balancedCandidates, setBalancedCandidates] = useState<BalancedCandidate[]>([]);
@@ -1430,6 +1435,9 @@ export function EditorApp() {
           seed,
           topology: id,
           relief: balancedRelief,
+          size: balancedSize,
+          worldWidth: balancedWorldWidth,
+          worldHeight: balancedWorldHeight,
           textureName: balancedTextureName,
           name: balancedName.trim() || 'Generated balanced map',
         }, template, manifest);
@@ -1464,7 +1472,7 @@ export function EditorApp() {
     } finally {
       if (balancedGenerationTokenRef.current === generationToken) setBalancedGenerating(false);
     }
-  }, [balancedName, balancedRelief, balancedSeed, balancedTemplateId, balancedTextureName, baseTemplates?.templates, manifest]);
+  }, [balancedName, balancedRelief, balancedSeed, balancedSize, balancedWorldWidth, balancedWorldHeight, balancedTemplateId, balancedTextureName, baseTemplates?.templates, manifest]);
 
   const applyBalancedCandidate = useCallback(() => {
     const candidate = balancedCandidates[balancedSelectedIndex];
@@ -1723,11 +1731,17 @@ export function EditorApp() {
               step={10}
               value={balancedRelief}
             />
+            <NumberField label="Grid vertices per side (odd)" disabled={balancedGenerating}
+              min={17} max={513} step={2} value={balancedSize} onChange={setBalancedSize} />
+            <NumberField label="World width" disabled={balancedGenerating}
+              min={1} step={100} value={balancedWorldWidth} onChange={setBalancedWorldWidth} />
+            <NumberField label="World height" disabled={balancedGenerating}
+              min={1} step={100} value={balancedWorldHeight} onChange={setBalancedWorldHeight} />
           </section>
 
           <div className="balanced-profile-note">
             <strong>{BALANCED_GENERATOR_VERSION}</strong>
-            <span>129 × 129 · 5600 × 5600 world · 22° slope proxy · 58% raw coverage · 1-vertex clearance · 2 routes per team</span>
+            <span>{balancedSize} × {balancedSize} · {balancedWorldWidth} × {balancedWorldHeight} world · 22° slope proxy · 58% raw coverage · 1-vertex clearance · 2 routes per team</span>
           </div>
 
           {balancedError && <p className="balanced-generator-error"><AlertTriangle />{balancedError}</p>}
@@ -1776,6 +1790,8 @@ export function EditorApp() {
                     Selected candidate seed: <code>{selectedBalancedCandidate.result.identity.seed}</code>
                     {' · '}{selectedBalancedCandidate.result.identity.topology}
                     {' · '}{BALANCED_GENERATOR_VERSION}
+                    {' · '}{selectedBalancedCandidate.result.identity.size} × {selectedBalancedCandidate.result.identity.size}
+                    {' · '}{selectedBalancedCandidate.result.identity.worldWidth} × {selectedBalancedCandidate.result.identity.worldHeight} world
                   </p>
                   {selectedBalancedCandidate.analysis.terrain.gates.map((gate) => (
                     <div className={gate.passed ? 'pass' : 'fail'} key={gate.code}>
