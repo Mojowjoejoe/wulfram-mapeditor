@@ -14,6 +14,8 @@ export const BALANCED_GENERATOR_VERSION = 'strict-rotational-v1';
 export const BALANCED_DEFAULT_SIZE = 129;
 export const BALANCED_DEFAULT_WORLD_SIZE = 5600;
 export const BALANCED_STANDARD_RELIEF = 524;
+// Generation has no wall-clock input. Subsequent editor saves own edit timestamps.
+export const BALANCED_GENERATED_AT = '2000-01-01T00:00:00.000Z';
 
 export type BalancedMapTopology = 'open-field' | 'three-route' | 'ring-center';
 
@@ -431,7 +433,7 @@ export function generateBalancedProject(
     team1.entities.push(...firstUplink.entities);
     team2.entities.push(...secondUplink.entities);
   }
-  const updatedAt = options.updatedAt ?? new Date().toISOString();
+  const updatedAt = options.updatedAt ?? BALANCED_GENERATED_AT;
   if (Number.isNaN(Date.parse(updatedAt))) throw new Error('updatedAt must be an ISO-compatible date string.');
   project.updatedAt = updatedAt;
   project.entities = [...team1.entities, ...team2.entities];

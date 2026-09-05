@@ -5,6 +5,7 @@ import {
   BALANCED_DEFAULT_SIZE,
   BALANCED_DEFAULT_WORLD_SIZE,
   BALANCED_GENERATOR_VERSION,
+  BALANCED_GENERATED_AT,
   BALANCED_STANDARD_RELIEF,
   balancedSeedHash,
   generateBalancedProject,
@@ -442,10 +443,11 @@ void test('complete project generation places a deterministic valid paired base'
     seed: 'paired-project',
     topology: 'open-field',
     name: 'Paired Project',
-    updatedAt: '2000-01-01T00:00:00.000Z',
   };
   const first = generateBalancedProject(options, TEST_BASE_TEMPLATE);
   const second = generateBalancedProject(options, TEST_BASE_TEMPLATE);
+  assert.equal(first.project.updatedAt, BALANCED_GENERATED_AT);
+  assert.equal(second.project.updatedAt, BALANCED_GENERATED_AT);
   assert.deepEqual(createMapSourceFiles(first.project), createMapSourceFiles(second.project));
   assert.deepEqual(validateProject(first.project), []);
   assert.equal(
@@ -471,6 +473,14 @@ void test('complete project generation places a deterministic valid paired base'
   const sourceFiles = createMapSourceFiles(first.project);
   assert.deepEqual(JSON.parse(sourceFiles['map.json']).metadata, metadata);
   assert.deepEqual(parseMapSourceFiles(sourceFiles).metadata, metadata);
+});
+
+void test('generation preserves explicit timestamps and rejects invalid timestamps', () => {
+  const updatedAt = '2026-09-05T12:34:56.000Z';
+  const generated = generateBalancedProject({ seed: 'explicit-time', topology: 'open-field', updatedAt }, TEST_BASE_TEMPLATE);
+  assert.equal(generated.project.updatedAt, updatedAt);
+  assert.equal(generated.project.baseLayouts[0].updatedAt, updatedAt);
+  assert.throws(() => generateBalancedProject({ seed: 'bad-time', topology: 'open-field', updatedAt: 'invalid' }, TEST_BASE_TEMPLATE), /ISO-compatible/);
 });
 
 void test('map-level generator metadata is optional, string-only, and backward compatible', () => {

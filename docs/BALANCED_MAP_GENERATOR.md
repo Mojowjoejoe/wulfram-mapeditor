@@ -80,8 +80,11 @@ generator version + profile ID + seed + dimensions + world size
 ```
 
 The same complete identity must produce byte-identical canonical terrain and paired
-entity data. Timestamps and user-facing project names must be excluded from the
-deterministic content comparison.
+entity data. Fresh generation defaults to the stable timestamp
+`2000-01-01T00:00:00.000Z`, so repeated calls with the same project name also produce
+identical complete canonical source. Callers may explicitly supply an editorial
+timestamp; normal editor saves continue to record actual edit times. Explicit
+timestamps and project names must also match when comparing entire source files.
 
 Seeds are normalized as UTF-8 text and hashed by a documented stable algorithm.
 Changing generator behavior requires a new generator version and retained regression
