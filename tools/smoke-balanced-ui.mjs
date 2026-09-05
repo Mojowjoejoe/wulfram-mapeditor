@@ -5,6 +5,14 @@ import { readMapArchive } from '../lib/map-package.ts';
 
 const debuggerPort = Number(process.env.WULFRAM_CDP_PORT ?? 9223);
 const expectedUrlPrefix = process.env.WULFRAM_CDP_URL_PREFIX ?? 'http://localhost:3000';
+const viewportWidth = Number(process.env.WULFRAM_VIEWPORT_WIDTH ?? 1440);
+const viewportHeight = Number(process.env.WULFRAM_VIEWPORT_HEIGHT ?? 1000);
+const deviceScaleFactor = Number(process.env.WULFRAM_DEVICE_SCALE_FACTOR ?? 1);
+if (!Number.isInteger(viewportWidth) || viewportWidth < 800
+  || !Number.isInteger(viewportHeight) || viewportHeight < 600
+  || !Number.isFinite(deviceScaleFactor) || deviceScaleFactor < 1 || deviceScaleFactor > 4) {
+  throw new Error('Viewport width/height and device scale factor are outside the supported smoke-test range.');
+}
 const outputPath = path.resolve(process.argv[2] ?? 'artifacts/balanced-generator-dialog.png');
 const persistenceDirectory = process.argv[3] ? path.resolve(process.argv[3]) : undefined;
 const targets = await fetch(`http://127.0.0.1:${debuggerPort}/json/list`).then((response) => response.json());
@@ -54,10 +62,11 @@ async function waitFor(expression, timeoutMs = 15000) {
 
 await cdp('Runtime.enable');
 await cdp('Page.enable');
+await cdp('Performance.enable');
 await cdp('Emulation.setDeviceMetricsOverride', {
-  width: 1440,
-  height: 1000,
-  deviceScaleFactor: 1,
+  width: viewportWidth,
+  height: viewportHeight,
+  deviceScaleFactor,
   mobile: false,
 });
 if (persistenceDirectory) await evaluate("localStorage.removeItem('wulfram-forge-project-v1')");
@@ -72,8 +81,10 @@ await evaluate(`(() => {
   setter.call(input, 'Balanced UI Smoke');
   input.dispatchEvent(new Event('input', { bubbles: true }));
 })()`);
+const generationStartedAt = performance.now();
 await evaluate("Array.from(document.querySelectorAll('.balanced-generator-footer button')).find((button) => button.textContent.includes('Generate three'))?.click()");
 await waitFor("document.querySelectorAll('.balanced-candidate-grid > button').length === 3");
+const generationDurationMs = performance.now() - generationStartedAt;
 
 const result = await evaluate(`(() => {
   const candidates = Array.from(document.querySelectorAll('.balanced-candidate-grid > button'));
@@ -86,12 +97,23 @@ const result = await evaluate(`(() => {
     applyDisabled: apply?.disabled,
     dialogTitle: document.querySelector('.balanced-generator-dialog [data-slot="dialog-title"]')?.textContent,
     gateCount: document.querySelectorAll('.balanced-gate-list > div').length,
+    viewport: {
+      width: innerWidth,
+      height: innerHeight,
+      devicePixelRatio,
+      documentWidth: document.documentElement.scrollWidth,
+      documentHeight: document.documentElement.scrollHeight,
+    },
   };
 })()`);
 
 if (result.candidateCount !== 3 || result.passingCount < 1 || result.selectedCount !== 1
   || result.applyDisabled !== false || result.gateCount !== 11) {
   throw new Error(`Balanced dialog smoke check failed: ${JSON.stringify(result)}`);
+}
+if (result.viewport.documentWidth > result.viewport.width
+  || result.viewport.documentHeight > result.viewport.height) {
+  throw new Error(`Balanced dialog overflows the configured viewport: ${JSON.stringify(result.viewport)}`);
 }
 if (runtimeErrors.length) throw new Error(`Browser runtime errors: ${runtimeErrors.join(' | ')}`);
 
@@ -223,8 +245,13 @@ if (persistenceDirectory) {
   };
 }
 if (runtimeErrors.length) throw new Error(`Browser runtime errors: ${runtimeErrors.join(' | ')}`);
+const performanceMetrics = await cdp('Performance.getMetrics');
+const metric = (name) => performanceMetrics.metrics.find((item) => item.name === name)?.value;
 console.log(JSON.stringify({
   ...result,
+  generationDurationMs,
+  jsHeapUsedBytes: metric('JSHeapUsedSize'),
+  jsHeapTotalBytes: metric('JSHeapTotalSize'),
   ...applied,
   screenshot: outputPath,
   appliedScreenshot: appliedOutputPath,

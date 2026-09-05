@@ -81,7 +81,18 @@ node .\tools\smoke-balanced-ui.mjs .\artifacts\balanced-generator-desktop.png
 
 The probe reloads the app, opens the generator, creates three candidates, requires
 at least one passing candidate and all eleven report gates, applies the selected
-candidate, and writes before/after screenshots.
+candidate, and writes before/after screenshots. Its JSON receipt includes candidate
+generation time and the renderer's used and allocated JavaScript heap sizes.
+
+Set the logical viewport and device scale factor to reproduce a Windows display
+configuration. The probe rejects document overflow at the configured viewport:
+
+```powershell
+$env:WULFRAM_VIEWPORT_WIDTH = '1280'
+$env:WULFRAM_VIEWPORT_HEIGHT = '730'
+$env:WULFRAM_DEVICE_SCALE_FACTOR = '2'
+node .\tools\smoke-balanced-ui.mjs .\artifacts\balanced-generator-high-dpi.png
+```
 
 Pass a new output directory as the optional second path argument to run the complete
 persistence journey. This mode deliberately clears only the debug profile's Forge
