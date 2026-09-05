@@ -47,6 +47,7 @@ export interface WulframProject {
   format: 'wulfram-map-project';
   version: 1;
   name: string;
+  metadata?: BaseLayoutMetadata;
   terrain: TerrainData;
   entities: StateEntity[];
   validation: ValidationSettings;
@@ -968,6 +969,9 @@ export function cloneProject(project: WulframProject): WulframProject {
     format: 'wulfram-map-project',
     version: 1,
     name: canonical.name,
+    ...(canonical.metadata && Object.keys(canonical.metadata).length
+      ? { metadata: normalizedLayoutMetadata(canonical.metadata) }
+      : {}),
     terrain: canonical.terrain,
     entities: canonical.entities,
     validation: canonical.validation,

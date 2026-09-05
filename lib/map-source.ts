@@ -57,6 +57,7 @@ export interface MapSourceManifest {
   format: 'wulfram-map-source';
   version: 1;
   name: string;
+  metadata?: BaseLayoutMetadata;
   terrain: {
     width: number;
     height: number;
@@ -300,11 +301,13 @@ export function createMapSourceFiles(project: WulframProject): CompleteMapSource
     );
   }
 
+  const metadata = sourceMetadata(canonical.metadata ?? {});
   const manifest: MapSourceManifest = {
     $schema: SOURCE_SCHEMA,
     format: 'wulfram-map-source',
     version: 1,
     name: canonical.name,
+    ...(Object.keys(metadata).length ? { metadata } : {}),
     terrain: {
       width: canonical.terrain.width,
       height: canonical.terrain.height,
@@ -460,6 +463,9 @@ export function parseMapSourceFiles(
     format: 'wulfram-map-project',
     version: 1,
     name: text(rawManifest.name, 'name'),
+    ...(rawManifest.metadata === undefined
+      ? {}
+      : { metadata: parseMetadata(rawManifest.metadata, 'map.json metadata') }),
     terrain: {
       width,
       height,

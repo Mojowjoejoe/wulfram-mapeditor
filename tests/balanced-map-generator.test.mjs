@@ -463,9 +463,30 @@ void test('complete project generation places a deterministic valid paired base'
     assert.ok(Math.abs(team2.position[1] - (first.terrain.worldHeight - team1.position[1])) <= 1e-9);
   }
   const metadata = first.project.baseLayouts[0].metadata;
+  assert.deepEqual(first.project.metadata, metadata);
   assert.equal(metadata['generator.version'], BALANCED_GENERATOR_VERSION);
   assert.equal(metadata['generator.seed'], options.seed);
   assert.equal(metadata['generator.topology'], options.topology);
+  const sourceFiles = createMapSourceFiles(first.project);
+  assert.deepEqual(JSON.parse(sourceFiles['map.json']).metadata, metadata);
+  assert.deepEqual(parseMapSourceFiles(sourceFiles).metadata, metadata);
+});
+
+void test('map-level generator metadata is optional, string-only, and backward compatible', () => {
+  const blank = createBlankProject('Legacy source', 17);
+  const files = createMapSourceFiles(blank);
+  assert.equal(JSON.parse(files['map.json']).metadata, undefined);
+  assert.equal(parseMapSourceFiles(files).metadata, undefined);
+
+  const invalidManifest = JSON.parse(files['map.json']);
+  invalidManifest.metadata = { 'generator.seed': 42 };
+  assert.throws(
+    () => parseMapSourceFiles({
+      ...files,
+      'map.json': `${JSON.stringify(invalidManifest)}\n`,
+    }),
+    /map\.json metadata\.generator\.seed must be text/,
+  );
 });
 
 void test('project generation supplements a missing uplink as an exact pair', () => {

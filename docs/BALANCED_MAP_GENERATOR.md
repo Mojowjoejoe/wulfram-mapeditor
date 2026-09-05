@@ -193,13 +193,15 @@ publication evidence.
 
 ## Persistence
 
-Generator metadata is optional and backward-compatible. It must not alter legacy map
-semantics. The canonical representation should retain stable fields for generator
-version, profile, seed, topology, and parameter JSON or their normalized equivalents.
+Generator metadata is optional and backward-compatible. Canonical `map.json` stores
+the terrain-wide generator version, profile, seed, topology, parameter JSON, source
+revision, review status, and analysis report as sorted string metadata. The active
+base layout retains a duplicate for compatibility with existing layout consumers,
+but it is no longer the only provenance source.
 
-Schema changes require coordinated parser, serializer, fixture, editor, maps schema,
-and round-trip coverage. Do not place terrain-wide provenance only in an active base
-layout.
+The editor and maps repositories both permit the optional string-only metadata object
+in their v1 schema. Older maps omit it without gaining an empty property, while
+parser, serializer, CLI, and round-trip tests preserve and validate it.
 
 ## Required verification
 

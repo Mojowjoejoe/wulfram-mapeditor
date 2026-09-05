@@ -94,10 +94,8 @@ async function generateBalancedRepositoryMap(repository, slug, seed, topology, t
     ];
     throw new Error(`Generated candidate failed: ${failures.join(' | ')}`);
   }
-  const metadata = result.project.baseLayouts[0].metadata;
-  metadata['generator.sourceRevision'] = runGit(EDITOR_ROOT, ['rev-parse', 'HEAD']);
-  metadata['generator.reviewStatus'] = 'offline-candidate';
-  metadata['generator.analysis'] = JSON.stringify({
+  const sourceRevision = runGit(EDITOR_ROOT, ['rev-parse', 'HEAD']);
+  const analysisMetadata = JSON.stringify({
     passed: analysis.passed,
     profile: analysis.terrain.profile,
     gates: analysis.terrain.gates,
@@ -106,6 +104,14 @@ async function generateBalancedRepositoryMap(repository, slug, seed, topology, t
     projectErrorCount: analysis.projectErrorCount,
     projectWarningCount: analysis.projectWarningCount,
   });
+  for (const metadata of [
+    result.project.metadata ??= {},
+    result.project.baseLayouts[0].metadata,
+  ]) {
+    metadata['generator.sourceRevision'] = sourceRevision;
+    metadata['generator.reviewStatus'] = 'offline-candidate';
+    metadata['generator.analysis'] = analysisMetadata;
+  }
   saveRepositoryMap(repository, slug, result.project);
   const [compiled] = await compileRepository(repository, [slug], output);
   console.log(`${slug}: generated ${topology} candidate on ${git.branch}.`);

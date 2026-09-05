@@ -193,6 +193,8 @@ void test('balanced-map CLI refuses main and writes a validated compiled candida
   assert.match(stdout, /Coverage: .* routes: 2\/2; entities: 30/);
   const generated = loadRepositoryMap(repository, 'generated-cli-test');
   assert.equal(generated.name, 'Generated Cli Test');
+  assert.equal(generated.metadata['generator.seed'], 'cli-seed');
+  assert.equal(generated.metadata['generator.reviewStatus'], 'offline-candidate');
   assert.equal(generated.baseLayouts[0].metadata['generator.seed'], 'cli-seed');
   assert.equal(generated.baseLayouts[0].metadata['generator.reviewStatus'], 'offline-candidate');
   assert.equal(fs.existsSync(path.join(output, 'generated-cli-test.zip')), true);

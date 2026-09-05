@@ -436,25 +436,27 @@ export function generateBalancedProject(
   project.updatedAt = updatedAt;
   project.entities = [...team1.entities, ...team2.entities];
   project.activeBaseLayoutId = DEFAULT_BASE_LAYOUT_ID;
+  const generatorMetadata = {
+    'generator.version': generated.identity.generatorVersion,
+    'generator.profile': BALANCED_GENERATOR_VERSION,
+    'generator.seed': generated.identity.seed,
+    'generator.topology': generated.identity.topology,
+    'generator.parameters': JSON.stringify({
+      size: generated.identity.size,
+      worldWidth: generated.identity.worldWidth,
+      worldHeight: generated.identity.worldHeight,
+      relief: generated.identity.relief,
+      baseHeight: generated.identity.baseHeight,
+      textureName: generated.identity.textureName,
+      baseTemplate: template.id,
+      supplementedUplink,
+    }),
+  };
+  project.metadata = { ...generatorMetadata };
   project.baseLayouts = [{
     id: DEFAULT_BASE_LAYOUT_ID,
     name: 'Generated balanced layout',
-    metadata: {
-      'generator.version': generated.identity.generatorVersion,
-      'generator.profile': BALANCED_GENERATOR_VERSION,
-      'generator.seed': generated.identity.seed,
-      'generator.topology': generated.identity.topology,
-      'generator.parameters': JSON.stringify({
-        size: generated.identity.size,
-        worldWidth: generated.identity.worldWidth,
-        worldHeight: generated.identity.worldHeight,
-        relief: generated.identity.relief,
-        baseHeight: generated.identity.baseHeight,
-        textureName: generated.identity.textureName,
-        baseTemplate: template.id,
-        supplementedUplink,
-      }),
-    },
+    metadata: { ...generatorMetadata },
     entities: clonedEntities(project.entities),
     validation: { ...project.validation },
     updatedAt,
